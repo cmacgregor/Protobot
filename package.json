@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "bot.js",
   "dependencies": {
-    "discord.js": "^11.5.1",
+    "discord.js": "^11.6.4",
     "enmap": "^5.2.3",
     "fs": "0.0.1-security"
   },

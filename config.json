@@ -1,4 +1,6 @@
-{ 
-  "prefix" : "!",
-  "categoryChannelName" : "Matchmaking Channels"
+{
+  "prefix": "!",
+  "categoryChannelName": "Matchmaking Channels",
+  "raffleTextChannelId": "649018331617296389",
+  "raffleVoiceChannelId": "649018331617296390"
 }
