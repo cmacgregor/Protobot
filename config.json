@@ -1,6 +1,7 @@
 {
-  "prefix": "!",
-  "categoryChannelName": "Matchmaking Channels",
-  "raffleTextChannelId": "649018331617296389",
-  "raffleVoiceChannelId": "649018331617296390"
+    "prefix": "!",
+    "categoryChannelName": "Matchmaking Channels",
+    "raffleTextChannelId": "705299684784341046",
+    "raffleVoiceChannelId": "704377162433691689",
+    "raffleTickets": "tickets.json"
 }
