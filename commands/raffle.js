@@ -1,13 +1,16 @@
 var fs = require("fs");
 
 exports.run = (client, message, args) => {
-    var raffleTextChannel = "none";
-    var winner = "";
-    var localClient = client;
-    var lastMessage = message;
+    let raffleTextChannel = "none";
+    let localClient = client;
+    let lastMessage = message;
 
-    //get guild info from the message 
-    var guildInfo = getGuildRaffleInfo(lastMessage.guild.id); 
+    //get guild info from the message
+    let dirPath = "servers/" + "chungus/"; //+ lastMessage.guild.id;
+    let raffleConfigFilePath = dirPath + "raffleConfig.json";
+    let ticketsFilePath = dirPath + "tickets.json";
+
+    let raffleConfig = getRaffleConfigInfo(raffleConfigFilePath);
 
     raffleTextChannel = lastMessage.guild.channels.find(
         (channel) => channel.id === localClient.config.raffleTextChannelId
@@ -16,14 +19,18 @@ exports.run = (client, message, args) => {
     if (!raffleTextChannel) {
         raffleTextChannel = lastMessage.channel;
     }
-    //rafflers = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-    var rafflers = getRafflers(localClient.config.raffleVoiceChannelId);
-    var tickets = getTickets(rafflers, localClient.config.raffleTickets);
 
-    var winningIndex = Math.floor(Math.random() * tickets.length);
-    var winnersId = tickets[winningIndex];
+    let rafflers = getRafflers(
+        raffleConfig["voiceChannelId"],
+        lastMessage.guild.channels
+    );
+    console.log(rafflers);
+    let tickets = getTickets(rafflers, ticketsFilePath);
+    console.log(tickets);
+    let winningIndex = Math.floor(Math.random() * tickets.length);
+    let winnersId = tickets[winningIndex];
 
-    var winner = {};
+    let winner = {};
     rafflers.forEach((participant) => {
         if (participant[0] === winnersId) {
             winner = participant;
@@ -31,24 +38,42 @@ exports.run = (client, message, args) => {
     });
 
     if (args[0] == "on") {
-        updateTickets(winnersId, rafflers, localClient.config.raffleTickets);
+        updateTickets(winnersId, rafflers, ticketsFilePath);
     }
-    console.log(args);
+
     // console.log("Users in raffle: " + tickets.length);
     // console.log("Index: " + winningIndex + ": " + winnersId);
     // console.log("Winner: " + winner);
+    console.log("<@" + winner + "> wins!");
     raffleTextChannel
-        .send(raffleTextChannel.send(`${winner} wins!`))
+        .send(raffleTextChannel.send("<@" + winnersId + "> wins!"))
         .catch(console.error);
 };
 
-function getGuildRaffleInfo(guildId){
-    
+function getRaffleConfigInfo(raffleConfigFilePath) {
+    if (fs.existsSync(raffleConfigFilePath)) {
+        let rawData = fs.readFileSync(raffleConfigFilePath);
+        return JSON.parse(rawData);
+    } else {
+        console.log("Couldn't find raffleConfig at " + raffleConfigFilePath);
+    }
 }
 
-function getRafflers(raffleVoiceChannel) {
+// Use for creating raffleConfig
+// if (!fs.existsSync(dirPath)) {
+//     fs.mkdirSync(process.cwd() + dirPath, { recursive: true }, (error) => {
+//         if (error) {
+//             console.error("Error Creating guild directory");
+//         }
+//     });
+
+//     let filedata = '{}'
+//     fs.writeFile(dirPath + 'raffleConfig.json', '', )
+// }
+
+function getRafflers(raffleVoiceChannel, guildChannels) {
     //get user id's from raffle voice channel
-    var rafflerChannel = lastMessage.guild.channels.find(
+    var rafflerChannel = guildChannels.find(
         (channel) => channel.id === raffleVoiceChannel
     );
     return (rafflers = Array.from(rafflerChannel.members));
@@ -120,10 +145,7 @@ function updateTickets(winnersId, currentParticipants, raffleTickets) {
     });
 
     jsonString = JSON.stringify(newTicketRecord);
-    fs.writeFile(raffleTickets, jsonString, function (
-        err,
-        data
-    ) {
+    fs.writeFile(raffleTickets, jsonString, function (err, data) {
         if (err) {
             return console.log(err);
         }
