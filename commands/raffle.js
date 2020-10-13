@@ -1,28 +1,34 @@
 var fs = require("fs");
-var localClient;
-var lastMessage;
 
 exports.run = (client, message, args) => {
-    var raffleTextChannel = "none";
-    var winner = "";
-    localClient = client;
-    lastMessage = message;
+    let raffleTextChannel = "none";
+    let lastMessage = message;
 
-    //get raffle text channel
+    //get guild info from the message
+    let dirPath = "servers/" + lastMessage.guild.id + "/";
+    let raffleConfigFilePath = dirPath + "raffleConfig.json";
+    let ticketsFilePath = dirPath + "tickets.json";
+
+    let raffleConfig = getRaffleConfigInfo(raffleConfigFilePath);
+
     raffleTextChannel = lastMessage.guild.channels.find(
-        (channel) => channel.id === localClient.config.raffleTextChannelId
+        (channel) => channel.id === client.config.raffleTextChannelId
     );
+
     if (!raffleTextChannel) {
         raffleTextChannel = lastMessage.channel;
     }
-    //rafflers = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-    var rafflers = getRafflers();
-    var tickets = getTickets(rafflers);
 
-    var winningIndex = Math.floor(Math.random() * tickets.length);
-    var winnersId = tickets[winningIndex];
+    let rafflers = getRafflers(
+        raffleConfig["voiceChannelId"],
+        lastMessage.guild.channels
+    );
+    let tickets = getTickets(rafflers, ticketsFilePath);
 
-    var winner = {};
+    let winningIndex = Math.floor(Math.random() * tickets.length);
+    let winnersId = tickets[winningIndex];
+
+    let winner = {};
     rafflers.forEach((participant) => {
         if (participant[0] === winnersId) {
             winner = participant;
@@ -30,26 +36,32 @@ exports.run = (client, message, args) => {
     });
 
     if (args[0] == "on") {
-        updateTickets(winnersId, rafflers);
+        updateTickets(winnersId, rafflers, ticketsFilePath);
     }
-    console.log(args);
-    // console.log("Users in raffle: " + tickets.length);
-    // console.log("Index: " + winningIndex + ": " + winnersId);
-    // console.log("Winner: " + winner);
+
     raffleTextChannel
-        .send(raffleTextChannel.send(`${winner} wins!`))
+        .send(raffleTextChannel.send("<@" + winnersId + "> wins!"))
         .catch(console.error);
 };
 
-function getRafflers() {
+function getRaffleConfigInfo(raffleConfigFilePath) {
+    if (fs.existsSync(raffleConfigFilePath)) {
+        let rawData = fs.readFileSync(raffleConfigFilePath);
+        return JSON.parse(rawData);
+    } else {
+        console.log("Couldn't find raffleConfig at " + raffleConfigFilePath);
+    }
+}
+
+function getRafflers(raffleVoiceChannel, guildChannels) {
     //get user id's from raffle voice channel
-    var rafflerChannel = lastMessage.guild.channels.find(
-        (channel) => channel.id === localClient.config.raffleVoiceChannelId
+    var rafflerChannel = guildChannels.find(
+        (channel) => channel.id === raffleVoiceChannel
     );
     return (rafflers = Array.from(rafflerChannel.members));
 }
 
-function getTickets(participants) {
+function getTickets(participants, raffleTickets) {
     //get the current tickets
 
     var currentTickets = [];
@@ -60,7 +72,7 @@ function getTickets(participants) {
 
     var allTickets = currentTickets;
     //get past participants
-    var pastTicketHolders = getPastParticipants();
+    var pastTicketHolders = getPastParticipants(raffleTickets);
     pastTicketHolders.forEach((ticketHolder) => {
         if (currentTickets.includes(ticketHolder.id)) {
             for (i = 0; i < ticketHolder.votes; i++) {
@@ -69,19 +81,17 @@ function getTickets(participants) {
         }
     });
 
-    // console.log(allTickets);
     return allTickets;
 }
 
-function getPastParticipants() {
-    var rawTicketData = fs.readFileSync(localClient.config.raffleTickets);
+function getPastParticipants(raffleTickets) {
+    var rawTicketData = fs.readFileSync(raffleTickets);
     var ticketHolder = JSON.parse(rawTicketData);
 
-    // console.log(ticketHolder);
     return ticketHolder;
 }
 
-function updateTickets(winnersId, currentParticipants) {
+function updateTickets(winnersId, currentParticipants, raffleTickets) {
     var newTicketRecord = [];
 
     var currentParticipantsIds = [];
@@ -90,7 +100,7 @@ function updateTickets(winnersId, currentParticipants) {
     });
 
     //update the past records
-    var pastParticipants = getPastParticipants();
+    var pastParticipants = getPastParticipants(raffleTickets);
     pastParticipants.forEach((record) => {
         var newRecord = record;
 
@@ -115,10 +125,7 @@ function updateTickets(winnersId, currentParticipants) {
     });
 
     jsonString = JSON.stringify(newTicketRecord);
-    fs.writeFile(localClient.config.raffleTickets, jsonString, function (
-        err,
-        data
-    ) {
+    fs.writeFile(raffleTickets, jsonString, function (err, data) {
         if (err) {
             return console.log(err);
         }
