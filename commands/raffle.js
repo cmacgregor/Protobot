@@ -23,7 +23,14 @@ exports.run = (client, message, args) => {
         raffleConfig["voiceChannelId"],
         lastMessage.guild.channels
     );
-    let tickets = getTickets(rafflers, ticketsFilePath);
+
+    let tickets = null;
+
+    if (args[0] == "on") {
+        tickets = getWeightedTickets(rafflers, ticketsFilePath);
+    } else {
+        tickets = getUnweightedTickets(rafflers);
+    }
 
     let winningIndex = Math.floor(Math.random() * tickets.length);
     let winnersId = tickets[winningIndex];
@@ -39,8 +46,13 @@ exports.run = (client, message, args) => {
         updateTickets(winnersId, rafflers, ticketsFilePath);
     }
 
+    var winnerText = "No Users in raffle Voice Channel";
+    if (winnersId != undefined) {
+        winnerText = "<@" + winnersId + "> wins!";
+    }
+
     raffleTextChannel
-        .send(raffleTextChannel.send("<@" + winnersId + "> wins!"))
+        .send(raffleTextChannel.send(winnerText))
         .catch(console.error);
 };
 
@@ -61,14 +73,20 @@ function getRafflers(raffleVoiceChannel, guildChannels) {
     return (rafflers = Array.from(rafflerChannel.members));
 }
 
-function getTickets(participants, raffleTickets) {
+function getUnweightedTickets(participants) {
     //get the current tickets
-
     var currentTickets = [];
 
     participants.forEach((participant) => {
         currentTickets.push(participant[0]);
     });
+
+    return currentTickets;
+}
+
+function getWeightedTickets(participants, raffleTickets) {
+    //get the current tickets
+    var currentTickets = getUnweightedTickets(participants);
 
     var allTickets = currentTickets;
     //get past participants
@@ -83,10 +101,10 @@ function getTickets(participants, raffleTickets) {
 
     return allTickets;
 }
-
 function getPastParticipants(raffleTickets) {
     var rawTicketData = fs.readFileSync(raffleTickets);
     var ticketHolder = JSON.parse(rawTicketData);
+    console.log(ticketHolder);
 
     return ticketHolder;
 }
@@ -106,7 +124,7 @@ function updateTickets(winnersId, currentParticipants, raffleTickets) {
 
         if (currentParticipantsIds.includes(newRecord.id)) {
             if (newRecord.id !== winnersId) {
-                newRecord.votes = newRecord.votes + 1;
+                newRecord.votes = parseInt(newRecord.votes) + 1;
             }
             newTicketRecord.push(newRecord);
 
@@ -124,13 +142,17 @@ function updateTickets(winnersId, currentParticipants, raffleTickets) {
         newTicketRecord.push(newRecord);
     });
 
+    console.log(newTicketRecord);
+
     jsonString = JSON.stringify(newTicketRecord);
-    fs.writeFile(raffleTickets, jsonString, function (err, data) {
-        if (err) {
-            return console.log(err);
-        }
-        if (data) {
-            console.log(data);
-        }
-    });
+
+    console.log(jsonString);
+    // fs.writeFile(raffleTickets, jsonString, function (err, data) {
+    //     if (err) {
+    //         return console.log(err);
+    //     }
+    //     if (data) {
+    //         console.log("Write Data: " + data);
+    //     }
+    // });
 }
