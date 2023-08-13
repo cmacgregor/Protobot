@@ -102,9 +102,3 @@ dist
 
 # TernJS port file
 .tern-port
-
-# Auth.js ignore for token protection
-auth.json
-
-#ignore per server raffle configurations
-servers/*
