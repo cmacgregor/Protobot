@@ -1,39 +1,54 @@
-const { Client, Events, GatewayIntentBits } = require('discord.js');
-const Enmap = require('enmap');
-const fs = require('fs');
+require('dotenv').config();
+const token = process.env.DISCORD_TOKEN;
+const fs = require('node:fs');
+const path = require('node:path');
+const { Client, Collection, Events, GatewayIntentBits } = require('discord.js');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-const config = require('./config.json');
 
-console.log(process.env.DISCORD_TOKEN);
-// We also need to make sure we're attaching the config to the CLIENT so it's accessible everywhere!
-client.config = config;
+client.commands = new Collection();
+const foldersPath = path.join(__dirname, 'commands');
+const commandFolders = fs.readdirSync(foldersPath);
+
+for (const folder of commandFolders) {
+	const commandsPath = path.join(foldersPath, folder);
+	const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+	for (const file of commandFiles) {
+		const filePath = path.join(commandsPath, file);
+		const command = require(filePath);
+		if ('data' in command && 'execute' in command) {
+			client.commands.set(command.data.name, command);
+		} else {
+			console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
+		}
+	}
+}
+
+client.once(Events.ClientReady, () => {
+	console.log('Ready!');
+});
+
+client.on(Events.InteractionCreate, async interaction => {
+	if (!interaction.isChatInputCommand()) return;
+
+	const command = client.commands.get(interaction.commandName);
+
+	if (!command) return;
+
+	try {
+		await command.execute(interaction);
+	} catch (error) {
+		console.error(error);
+		if (interaction.replied || interaction.deferred) {
+			await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
+		} else {
+			await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+		}
+	}
+});
 
 client.once(Events.ClientReady, c => {
 	console.log(`Ready! Logged in as ${c.user.tag}`);
 });
 
-// read events handled from filesystem and map them
-// fs.readdir('./events/', (err, files) => {
-// 	if (err) return console.error(err);
-// 	files.forEach((file) => {
-// 		const event = require(`./events/${file}`);
-// 		const eventName = file.split('.')[0];
-// 		client.on(eventName, event.bind(null, client));
-// 	});
-// });
-
-// read commands handled from filesystem and map them
-// client.commands = new Enmap();
-// fs.readdir('./commands/', (err, files) => {
-// 	if (err) return console.error(err);
-// 	files.forEach((file) => {
-// 		if (!file.endsWith('.js')) return;
-// 		const props = require(`./commands/${file}`);
-// 		const commandName = file.split('.')[0];
-// 		console.log(`Attempting to load command ${commandName}`);
-// 		client.commands.set(commandName, props);
-// 	});
-// });
-
-client.login(config.token);
+client.login(token);
