@@ -1,4 +1,4 @@
-name: ci
+name: protobot docker build and push
 
 on:
   push:
