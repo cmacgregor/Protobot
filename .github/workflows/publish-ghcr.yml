@@ -1,0 +1,16 @@
+name: Docker Image CI for GHCR
+
+on:
+    push: 
+        branches: main
+
+jobs: 
+    Build_and_Publish: 
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+            - name: Build and push the Image
+              run: | 
+                docker login -- username cmacgregor --password ${{ secrests.GH_PAT }}
+                docker build . --tag ghcr.io/cmacgregor/protobot-ghcr:latest
+                doicker push ghcr.io/cmacgregor/protobot-ghcr:latest
