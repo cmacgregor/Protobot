@@ -9,6 +9,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - 
+        name: log for sanity
+        run: echo "${{ secrets.DOCKERHUB_USERNAME }}"
       -
         name: Checkout
         uses: actions/checkout@v3
