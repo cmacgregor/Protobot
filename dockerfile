@@ -1,4 +1,4 @@
-FROM buster-slim:latest
+FROM 20-buster-slim:latest
 
 RUN mkdir -p /usr/src/bot
 WORKDIR /usr/src/bot
