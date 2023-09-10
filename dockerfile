@@ -1,4 +1,4 @@
-FROM node:alpine
+FROM arm64v8/node
 
 RUN mkdir -p /usr/src/bot
 WORKDIR /usr/src/bot
