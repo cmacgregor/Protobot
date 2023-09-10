@@ -1,4 +1,4 @@
-FROM alpine:latest
+FROM buster-slim:latest
 
 RUN mkdir -p /usr/src/bot
 WORKDIR /usr/src/bot
