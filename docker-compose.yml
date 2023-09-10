@@ -3,3 +3,5 @@ services:
   bot:
     image: ghcr.io/cmacgregor/protobot-ghcr:latest
     restart: unless-stopped
+    volumes:
+      - ./.env:/usr/src/bot/.env
