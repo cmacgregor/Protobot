@@ -1,4 +1,4 @@
-FROM node:latest
+FROM alpine:latest
 
 RUN mkdir -p /usr/src/bot
 WORKDIR /usr/src/bot
