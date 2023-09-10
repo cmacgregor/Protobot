@@ -1,4 +1,4 @@
-FROM 20-buster-slim
+FROM node:20-buster-slim
 
 RUN mkdir -p /usr/src/bot
 WORKDIR /usr/src/bot
