@@ -6,6 +6,8 @@ As well as my own learning.
 1. Register your application/bot with discord
 2. Create and populate a .env file in the root directory of this project
     - DISCORD_TOKEN - Discord bot secret
+    - CLIENT_ID - Id of the bot application
+    - GUILD_ID - Id of Guild the bot is registering "/" commands in
 
 ### Running directly
 - Run node deploy-commands.js to register "/" commands with discord
