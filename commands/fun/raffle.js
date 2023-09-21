@@ -3,7 +3,8 @@ const { SlashCommandBuilder } = require('discord.js')
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('raffle')
-        .setDescription('Pick a winner of the raffle from users in the same voice chat as the caller'),
+        .setDescription('Pick a winner of the raffle from users in the same voice chat as the caller')
+        .setDMPermission(false),
         async execute(interaction) {
             let responseMessage = `You must be in a voice channel to raffle`;
             const voiceChannel = interaction.member.voice.channel;
