@@ -1,6 +1,16 @@
 const cheerio = require('cheerio');
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
+function inferServiceFromThumbnail(url) {
+	if (!url) return null;
+	if (url.includes('nflxso.net') || url.includes('netflix.com')) return 'Netflix';
+	if (url.includes('hulu.com')) return 'Hulu';
+	if (url.includes('disneyplus.com')) return 'Disney+';
+	if (url.includes('primevideo.com')) return 'Prime Video';
+	if (url.includes('crunchyroll.com')) return 'Crunchyroll';
+	return null;
+}
+
 module.exports = {
 	match: url => url.includes('teleparty.com'),
 
@@ -25,15 +35,17 @@ module.exports = {
 				.replace(/\s*\|.*$/, '')
 				.trim();
 
+			const inferredPlatform = inferServiceFromThumbnail(thumbnail);
 			const isGeneric = !cleanedTitle || cleanedTitle.toLowerCase() === 'teleparty';
 
 			return {
 				title: isGeneric ? 'Join the Watch Party!' : cleanedTitle,
 				thumbnail,
 				platform: 'Teleparty',
-				footerNote: isGeneric
-					? 'No media metadata found – showing generic session info.'
-					: 'Metadata extracted from Teleparty page.',
+				footerNote: inferredPlatform
+					? `Watch party synced with ${inferredPlatform}`
+					: 'Watch party shared via Teleparty',
+
 			};
 		}
 		catch (err) {
