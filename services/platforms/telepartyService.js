@@ -1,3 +1,4 @@
+// telepartyService.js
 const cheerio = require('cheerio');
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
