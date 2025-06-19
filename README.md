@@ -23,3 +23,20 @@ As well as my own learning.
   - Used to pick activities like movie night
 - Raffle setup function to configure the voice channel that's raffled on
 - CD github action to push to docker pi
+- Prettify links to the following streaming services 
+  -Information
+    - Clickable Hyperlink of media title
+    - Platform it's being watched on
+    - Embed color of service
+    - Thumbnail
+  - Services
+    - Hulu
+    - Amazon Video
+    - YouTube
+    - PlutoTV
+    - CrunchyRoll
+    - Teleparty
+      - Hulu
+      - Amazon video 
+      - PlutoTV
+      - CrunchyRoll
