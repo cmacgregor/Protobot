@@ -1,5 +1,6 @@
 // commands/utility/reload.js
 const { SlashCommandBuilder } = require('discord.js');
+const { PermissionLevel } = require('../../utils/permissions');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -61,6 +62,7 @@ module.exports = {
 		),
 
 	category: 'utility',
+	permissions: PermissionLevel.SERVER_OWNER,
 
 	async execute(interaction) {
 		const input = interaction.options.getString('command', true).trim().toLowerCase();
