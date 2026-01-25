@@ -1,6 +1,8 @@
 // commands/utility/watchparty.js
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fetch = require('node-fetch');
+const { exportMovieToSheet, fetchTMDBInfo, updateEndAttendees } = require('../../utils/sheetsExporter');
+const watchpartyTracker = require('../../utils/watchpartyTracker');
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 
@@ -16,8 +18,10 @@ const COLORS = {
 	PEACOCK: 0xFFC700,
 	PARAMOUNT_PLUS: 0x0064FF,
 	YOUTUBE: 0xFF0000,
-	ANIMEKAI: 0x228B22, // forest green
-	TELEPARTY: 0xE54037, // Teleparty red-orange
+	// forest green
+	ANIMEKAI: 0x228B22,
+	// Teleparty red-orange
+	TELEPARTY: 0xE54037,
 };
 
 const SERVICES = [
@@ -36,7 +40,7 @@ const SERVICES = [
 	{ rx: /(^|\.)paramountplus\.com$/i, color: COLORS.PARAMOUNT_PLUS, name: 'Paramount+' },
 	{ rx: /(^|\.)youtube\.com$/i, color: COLORS.YOUTUBE, name: 'YouTube' },
 	{ rx: /(^|\.)youtu\.be$/i, color: COLORS.YOUTUBE, name: 'YouTube' },
-	{ rx: /(^|\.)teleparty\.com$/i, color: COLORS.TELEPARTY, name: 'Teleparty' }, // NEW
+	{ rx: /(^|\.)teleparty\.com$/i, color: COLORS.TELEPARTY, name: 'Teleparty' },
 ];
 
 function normalizeUrl(input) {
@@ -96,20 +100,91 @@ module.exports = {
 
 		const svc = detectService(parsed.hostname);
 
-		// Poster (from TMDB if possible, else user avatar)
+		// Fetch TMDB info (poster, genre, runtime)
+		const tmdbInfo = await fetchTMDBInfo(title);
 		let poster = await tmdbPoster(title);
 		if (!poster) {
 			poster = interaction.user.displayAvatarURL({ size: 512, extension: 'png', forceStatic: false });
 		}
 
+		// Capture attendees from voice channel
+		const voiceChannel = interaction.member?.voice?.channel;
+		let attendees = [];
+		if (voiceChannel) {
+			attendees = voiceChannel.members.map(m => m.user.tag);
+		}
+
+		const startTime = new Date();
+
 		const embed = new EmbedBuilder()
 			.setTitle(title)
 			.setURL(parsed.toString())
 			.setColor(svc.color)
-			.setImage(poster) // large poster image between title & footer
-			.addFields({ name: 'Link', value: parsed.toString(), inline: false })
-			.setFooter({ text: svc.name });
+			.setImage(poster);
+
+		// Add link field
+		embed.addFields({ name: 'Link', value: parsed.toString(), inline: false });
+
+		// Add attendees field if any
+		if (attendees.length > 0) {
+			embed.addFields({
+				name: `Attendees (${attendees.length})`,
+				value: attendees.join(', '),
+				inline: false,
+			});
+		}
+
+		embed.setFooter({ text: svc.name });
 
 		await interaction.editReply({ embeds: [embed] });
+
+		// Export to Google Sheets (non-blocking, failures won't affect user experience)
+		if (process.env.GOOGLE_SHEETS_CREDENTIALS && process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
+			// Use command-provided title (fallback if TMDB doesn't find it)
+			exportMovieToSheet({
+				title: title,
+				url: parsed.toString(),
+				postedDate: startTime,
+				host: interaction.user.tag,
+				service: svc.name,
+				attendees: attendees.join(', '),
+				genre: tmdbInfo.genre || '',
+				rewatchCount: 1,
+				runtime: tmdbInfo.runtime,
+				imdbId: tmdbInfo.imdbId,
+			}).catch(err => {
+				console.error('[SHEETS] Failed to export watchparty to Google Sheets:', err.message);
+			});
+
+			// Start tracking for end-of-movie attendee capture
+			if (voiceChannel && tmdbInfo.runtime) {
+				watchpartyTracker.startTracking({
+					channelId: interaction.channelId,
+					voiceChannelId: voiceChannel.id,
+					title: title,
+					url: parsed.toString(),
+					host: interaction.user.tag,
+					startTime: startTime,
+					runtime: tmdbInfo.runtime,
+					onEnd: async () => {
+						// Capture end attendees
+						const guild = interaction.guild;
+						if (!guild) return;
+
+						const endVoiceChannel = guild.channels.cache.get(voiceChannel.id);
+						if (endVoiceChannel?.isVoiceBased()) {
+							const endAttendees = endVoiceChannel.members.map(m => m.user.tag);
+
+							// Update sheet with end attendees
+							updateEndAttendees(title, startTime, endAttendees.join(', ')).catch(err => {
+								console.error('[SHEETS] Failed to update end attendees:', err.message);
+							});
+
+							console.log(`[WATCHPARTY] Ended: ${title} - ${endAttendees.length} attendees at end`);
+						}
+					},
+				});
+			}
+		}
 	},
 };

@@ -3,6 +3,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const { PermissionLevel } = require('../../utils/permissions');
 const { extractMovieFromUrl } = require('../../utils/movieExtractor');
 const StateManager = require('../../utils/stateManager');
+const { fetchGenreFromTMDB } = require('../../utils/sheetsExporter');
 const { auth, sheets } = require('@googleapis/sheets');
 
 module.exports = {
@@ -57,9 +58,9 @@ module.exports = {
 
 			const successMessage = forceRescan
 				? `✅ Successfully exported ${movies.length} movie(s) to Google Sheets!\n` +
-				  `Full rescan completed - processed ${messages.length} total messages.`
+					`Full rescan completed - processed ${messages.length} total messages.`
 				: `✅ Successfully exported ${movies.length} movie(s) to Google Sheets!\n` +
-				  `Scanned ${messages.length} messages since ${scanAfter.toLocaleString()}`;
+					`Scanned ${messages.length} messages since ${scanAfter.toLocaleString()}`;
 
 			await interaction.editReply(successMessage);
 
@@ -76,6 +77,7 @@ async function fetchMessagesSince(channel, afterDate) {
 	let lastId;
 	const cutoffTimestamp = afterDate.getTime();
 
+	// eslint-disable-next-line no-constant-condition
 	while (true) {
 		const fetchOptions = { limit: 100 };
 		if (lastId) fetchOptions.before = lastId;
@@ -91,7 +93,8 @@ async function fetchMessagesSince(channel, afterDate) {
 		}
 
 		lastId = batch.last().id;
-		await new Promise(r => setTimeout(r, 100)); // Rate limit protection
+		// Rate limit protection
+		await new Promise(r => setTimeout(r, 100));
 	}
 
 	return messages;
@@ -100,23 +103,73 @@ async function fetchMessagesSince(channel, afterDate) {
 async function extractMoviesFromMessages(messages) {
 	const movies = [];
 	const urlRegex = /https?:\/\/[^\s]+/g;
+	// Track rewatch count
+	const titleCounts = {};
 
 	for (const msg of messages) {
+		// Extract URLs from message content
 		const urls = msg.content.match(urlRegex) || [];
 
-		for (const url of urls) {
+		// Also extract URLs from embed fields (for watchparty command)
+		if (msg.embeds?.length > 0) {
+			for (const embed of msg.embeds) {
+				// Check embed URL field
+				if (embed.url) {
+					urls.push(embed.url);
+				}
+				// Check Link field in watchparty embeds
+				const linkField = embed.fields?.find(f => f.name === 'Link');
+				if (linkField?.value) {
+					const embedUrls = linkField.value.match(urlRegex) || [];
+					urls.push(...embedUrls);
+				}
+			}
+		}
+
+		// Remove duplicates
+		const uniqueUrls = [...new Set(urls)];
+
+		// Check if this is a watchparty command (has interaction)
+		let attendees = '';
+		let host = msg.author.tag;
+
+		// Extract attendees from embed if present (from watchparty command)
+		if (msg.interaction?.commandName === 'watchparty' && msg.embeds?.length > 0) {
+			const embed = msg.embeds[0];
+			const attendeesField = embed.fields?.find(f => f.name?.startsWith('Attendees'));
+			if (attendeesField) {
+				attendees = attendeesField.value;
+			}
+			// Host is command caller
+			host = msg.interaction.user.tag;
+		}
+
+		for (const url of uniqueUrls) {
 			// Find the Discord embed that matches this URL (if any)
 			const matchingEmbed = msg.embeds?.find(e => e.url === url || e.data?.url === url);
 
 			// Pass the full message text and Discord embed to help extract title
 			const movieData = await extractMovieFromUrl(url, msg.content, matchingEmbed);
-			if (movieData && movieData.title !== url && movieData.title) { // Skip if extraction failed
+			// Skip if extraction failed
+			if (movieData && movieData.title !== url && movieData.title) {
+				// Track rewatch count
+				const normalizedTitle = movieData.title.toLowerCase().trim();
+				titleCounts[normalizedTitle] = (titleCounts[normalizedTitle] || 0) + 1;
+
+				// Fetch genre and runtime from TMDB
+				const tmdbInfo = await fetchGenreFromTMDB(movieData.title);
+
 				movies.push({
 					title: movieData.title,
 					url: movieData.sourceUrl,
 					postedDate: msg.createdAt,
-					postedBy: msg.author.tag,
+					host: host,
 					service: movieData.service,
+					attendees: attendees,
+					genre: tmdbInfo || '',
+					rewatchCount: titleCounts[normalizedTitle],
+					// Runtime not available for historical data
+					runtime: null,
 				});
 			}
 			// Rate limit protection for TMDB and web requests
@@ -137,16 +190,26 @@ async function exportToGoogleSheets(movies) {
 
 	const sheetsClient = sheets({ version: 'v4', auth: googleAuth });
 
+	// Columns: Title (with IMDB link), URL, Posted Date, Service, Genre, Rewatch Count, Runtime, Host, Start Attendees, End Attendees
 	const rows = movies.map(m => [
+		// No IMDB link for historical data (would be too slow to fetch for all)
 		m.title,
 		m.url,
 		m.postedDate.toLocaleString(),
-		m.postedBy,
+		m.service,
+		m.genre,
+		m.rewatchCount,
+		m.runtime || '',
+		m.host,
+		m.attendees,
+		// End attendees - blank for historical data
+		'',
 	]);
 
 	await sheetsClient.spreadsheets.values.append({
 		spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-		range: 'Sheet1!A2:D2',
+		// Updated range to include all 10 columns
+		range: 'Sheet1!A2:J2',
 		valueInputOption: 'RAW',
 		insertDataOption: 'INSERT_ROWS',
 		resource: { values: rows },
