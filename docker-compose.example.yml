@@ -1,0 +1,33 @@
+# Example docker-compose.yml for production deployment
+# Copy this to docker-compose.yml and customize as needed
+
+version: '3'
+services:
+  bot:
+    # Use your published image
+    image: ghcr.io/cmacgregor/protobot:latest
+
+    # Auto-restart unless manually stopped
+    restart: unless-stopped
+
+    # Mount your production .env file
+    # Create a .env file with your production credentials:
+    #
+    # Required:
+    # DISCORD_TOKEN=your_prod_token
+    # CLIENT_ID=your_prod_client_id
+    #
+    # Optional:
+    # GUILD_ID=your_guild_id (for guild-specific commands, faster deployment)
+    # CLEAR_FIRST=true (set to true to clear existing commands before deploying)
+    # TMDB_API_KEY=your_tmdb_key (for movie poster lookups in watchparty command)
+    #
+    # For exportmovies command:
+    # GOOGLE_SHEETS_CREDENTIALS=base64_encoded_credentials_json
+    # GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id
+    volumes:
+      - ./.env:/usr/src/bot/.env
+
+    # Run deploy-commands.js before starting the bot
+    # This ensures commands are registered with Discord on each startup
+    command: sh -c "node deploy-commands.js && node bot.js"
