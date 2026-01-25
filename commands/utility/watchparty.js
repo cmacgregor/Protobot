@@ -107,6 +107,7 @@ module.exports = {
 			.setURL(parsed.toString())
 			.setColor(svc.color)
 			.setImage(poster) // large poster image between title & footer
+			.addFields({ name: 'Link', value: parsed.toString(), inline: false })
 			.setFooter({ text: svc.name });
 
 		await interaction.editReply({ embeds: [embed] });
