@@ -4,6 +4,8 @@ const { checkPermission } = require('../utils/permissions');
 module.exports = {
 	name: Events.InteractionCreate,
 	async execute(interaction) {
+		if (interaction.isAutocomplete()) return handleAutocomplete(interaction);
+		if (interaction.isButton()) return handleButton(interaction);
 		if (!interaction.isChatInputCommand()) return;
 
 		const command = interaction.client.commands.get(interaction.commandName);
@@ -41,3 +43,31 @@ module.exports = {
 		}
 	},
 };
+
+async function handleAutocomplete(interaction) {
+	const command = interaction.client.commands.get(interaction.commandName);
+	if (!command?.autocomplete) return;
+
+	try {
+		await command.autocomplete(interaction);
+	}
+	catch (error) {
+		console.error(`[ERROR] Autocomplete for /${interaction.commandName} failed:`, error);
+	}
+}
+
+// Button custom IDs are prefixed with the name of the command that owns them, e.g. rate:12:8
+async function handleButton(interaction) {
+	const commandName = interaction.customId.split(':')[0];
+	const command = interaction.client.commands.get(commandName);
+	if (!command?.handleButton) return;
+
+	try {
+		await command.handleButton(interaction);
+	}
+	catch (error) {
+		console.error(`[ERROR] Button ${interaction.customId} failed for ${interaction.user.tag}:`, error);
+		const reply = { content: '❌ Something went wrong. Please try again.', ephemeral: true };
+		await (interaction.replied || interaction.deferred ? interaction.followUp(reply) : interaction.reply(reply)).catch(() => null);
+	}
+}

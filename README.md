@@ -17,6 +17,23 @@ As well as my own learning.
  - The included github action builds for arm64 and amd64 architechtures  
  - There's an example docker-compose.yml included in the repo
    - You'll have to provide your .env file from the setup section to the containerized application
+   - Mount `./data` as a volume so the ratings database survives restarts
+
+## Watchparty ratings
+Watchparties, attendance, and ratings are stored in a SQLite database at `./data/protobot.db` (override with `DB_PATH`). Requires Node 22+.
+
+- `/watchparty` records the watchparty and who's in your voice channel
+- When it ends (automatically after the TMDB runtime, or via `/endwatchparty`), the bot records who's still there and posts a 1–10 rating prompt
+- `/rate movie score` rates any past watchparty, or changes your rating
+- `/moviestats` shows aggregate metrics:
+  - `top` – highest/lowest rated movies
+  - `movie` – average, spread, score distribution, and watch history for one movie
+  - `user` – a member's average score, how they compare to the group, favorite genre, and attendance
+  - `breakdown` – average rating by genre, service, or host
+  - `controversial` – movies the group disagreed on most
+  - `attendance` – attendance leaderboard and how many people stay to the end
+
+Run `npm test` to run the database tests.
 
 ## Roadmap
 - Raffle function to @ a random person in a configured voice channel

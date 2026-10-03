@@ -25,8 +25,13 @@ services:
     # For exportmovies command:
     # GOOGLE_SHEETS_CREDENTIALS=base64_encoded_credentials_json
     # GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id
+    #
+    # Ratings database (optional, defaults to ./data/protobot.db):
+    # DB_PATH=/usr/src/bot/data/protobot.db
     volumes:
       - ./.env:/usr/src/bot/.env
+      # Persist the ratings database and export state across container restarts
+      - ./data:/usr/src/bot/data
 
     # Run deploy-commands.js before starting the bot
     # This ensures commands are registered with Discord on each startup

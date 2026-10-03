@@ -12,6 +12,7 @@ class WatchpartyTracker {
 	/**
 	 * Start tracking a new watchparty
 	 * @param {Object} data - Watchparty data
+	 * @param {number|null} data.watchpartyId - Database id of the watchparty
 	 * @param {string} data.channelId - Discord text channel ID
 	 * @param {string} data.voiceChannelId - Discord voice channel ID
 	 * @param {string} data.title - Movie title
@@ -39,8 +40,12 @@ class WatchpartyTracker {
 			const timeoutMs = runtime * 60 * 1000;
 			party.timer = setTimeout(() => {
 				console.log(`[WATCHPARTY] Auto-ending watchparty: ${data.title} after ${runtime} minutes`);
-				if (onEnd) onEnd();
 				this.activeParties.delete(channelId);
+				if (onEnd) {
+					Promise.resolve()
+						.then(onEnd)
+						.catch(err => console.error(`[WATCHPARTY] Failed to end ${data.title}:`, err));
+				}
 			}, timeoutMs);
 
 			console.log(`[WATCHPARTY] Timer set for ${runtime} minutes for: ${data.title}`);

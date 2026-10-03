@@ -1,7 +1,7 @@
 // commands/utility/endwatchparty.js
 const { SlashCommandBuilder } = require('discord.js');
-const { updateEndAttendees } = require('../../utils/sheetsExporter');
 const watchpartyTracker = require('../../utils/watchpartyTracker');
+const { finishWatchparty } = require('../../utils/ratingPrompt');
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -32,49 +32,19 @@ module.exports = {
 			return interaction.editReply('❌ You must be in the watchparty voice channel to end it.');
 		}
 
-		// Capture end attendees
-		const endAttendees = voiceChannel.members.map(m => m.user.tag);
-
-		// End tracking (clears timer)
+		// End tracking (clears timer), then record end attendees and post the rating prompt
 		watchpartyTracker.endTracking(interaction.channelId);
+		const { endAttendees, sheetUpdated } = await finishWatchparty(party, voiceChannel.members, interaction.channel);
 
-		// Update Google Sheets with end attendees
-		if (process.env.GOOGLE_SHEETS_CREDENTIALS && process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
-			try {
-				const updated = await updateEndAttendees(party.title, party.startTime, endAttendees.join(', '));
-
-				if (updated) {
-					await interaction.editReply(
-						`✅ Watchparty ended: **${party.title}**\n` +
-						`Started with: ${party.startTime.toLocaleString()}\n` +
-						`Final attendees (${endAttendees.length}): ${endAttendees.join(', ')}`,
-					);
-				}
-				else {
-					await interaction.editReply(
-						'⚠️ Watchparty ended but could not find sheet entry to update.\n' +
-						`Movie: **${party.title}**\n` +
-						`Final attendees (${endAttendees.length}): ${endAttendees.join(', ')}`,
-					);
-				}
-			}
-			catch (error) {
-				console.error('[SHEETS] Failed to update end attendees:', error);
-				await interaction.editReply(
-					'⚠️ Watchparty ended but sheet update failed.\n' +
-					`Movie: **${party.title}**\n` +
-					`Final attendees (${endAttendees.length}): ${endAttendees.join(', ')}\n` +
-					`Error: ${error.message}`,
-				);
-			}
+		const lines = [
+			`✅ Watchparty ended: **${party.title}**`,
+			`Started: ${party.startTime.toLocaleString()}`,
+			`Final attendees (${endAttendees.length}): ${endAttendees.join(', ')}`,
+		];
+		if (sheetUpdated === false) {
+			lines.push('⚠️ Could not update the Google Sheets entry.');
 		}
-		else {
-			await interaction.editReply(
-				`✅ Watchparty ended: **${party.title}**\n` +
-				`Final attendees (${endAttendees.length}): ${endAttendees.join(', ')}\n` +
-				'(Google Sheets not configured - data not saved)',
-			);
-		}
+		await interaction.editReply(lines.join('\n'));
 
 		console.log(`[WATCHPARTY] Manually ended by ${interaction.user.tag}: ${party.title}`);
 	},

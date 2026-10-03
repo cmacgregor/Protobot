@@ -1,8 +1,10 @@
 // commands/utility/watchparty.js
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const fetch = require('node-fetch');
-const { exportMovieToSheet, fetchTMDBInfo, updateEndAttendees } = require('../../utils/sheetsExporter');
+const { exportMovieToSheet, fetchTMDBInfo } = require('../../utils/sheetsExporter');
 const watchpartyTracker = require('../../utils/watchpartyTracker');
+const { getDatabase } = require('../../utils/database');
+const { finishWatchparty } = require('../../utils/ratingPrompt');
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 
@@ -109,10 +111,8 @@ module.exports = {
 
 		// Capture attendees from voice channel
 		const voiceChannel = interaction.member?.voice?.channel;
-		let attendees = [];
-		if (voiceChannel) {
-			attendees = voiceChannel.members.map(m => m.user.tag);
-		}
+		const attendeeUsers = voiceChannel ? voiceChannel.members.map(m => m.user) : [];
+		const attendees = attendeeUsers.map(u => u.tag);
 
 		const startTime = new Date();
 
@@ -136,7 +136,31 @@ module.exports = {
 
 		embed.setFooter({ text: svc.name });
 
-		await interaction.editReply({ embeds: [embed] });
+		const reply = await interaction.editReply({ embeds: [embed] });
+
+		// Record in the ratings database (failures won't affect user experience)
+		let watchpartyId = null;
+		try {
+			watchpartyId = getDatabase().createWatchparty({
+				guildId: interaction.guildId,
+				channelId: interaction.channelId,
+				voiceChannelId: voiceChannel?.id,
+				messageId: reply.id,
+				title: title,
+				url: parsed.toString(),
+				service: svc.name,
+				genre: tmdbInfo.genre,
+				runtime: tmdbInfo.runtime,
+				imdbId: tmdbInfo.imdbId,
+				hostId: interaction.user.id,
+				hostTag: interaction.user.tag,
+				startedAt: startTime,
+				attendees: attendeeUsers.map(u => ({ id: u.id, tag: u.tag })),
+			});
+		}
+		catch (err) {
+			console.error('[DB] Failed to record watchparty:', err);
+		}
 
 		// Export to Google Sheets (non-blocking, failures won't affect user experience)
 		if (process.env.GOOGLE_SHEETS_CREDENTIALS && process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
@@ -155,36 +179,28 @@ module.exports = {
 			}).catch(err => {
 				console.error('[SHEETS] Failed to export watchparty to Google Sheets:', err.message);
 			});
+		}
 
-			// Start tracking for end-of-movie attendee capture
-			if (voiceChannel && tmdbInfo.runtime) {
-				watchpartyTracker.startTracking({
-					channelId: interaction.channelId,
-					voiceChannelId: voiceChannel.id,
-					title: title,
-					url: parsed.toString(),
-					host: interaction.user.tag,
-					startTime: startTime,
-					runtime: tmdbInfo.runtime,
-					onEnd: async () => {
-						// Capture end attendees
-						const guild = interaction.guild;
-						if (!guild) return;
-
-						const endVoiceChannel = guild.channels.cache.get(voiceChannel.id);
-						if (endVoiceChannel?.isVoiceBased()) {
-							const endAttendees = endVoiceChannel.members.map(m => m.user.tag);
-
-							// Update sheet with end attendees
-							updateEndAttendees(title, startTime, endAttendees.join(', ')).catch(err => {
-								console.error('[SHEETS] Failed to update end attendees:', err.message);
-							});
-
-							console.log(`[WATCHPARTY] Ended: ${title} - ${endAttendees.length} attendees at end`);
-						}
-					},
-				});
-			}
+		// Track for end-of-movie attendee capture and the rating prompt.
+		// Auto-ends after the TMDB runtime if known, otherwise use /endwatchparty.
+		if (voiceChannel) {
+			const party = {
+				channelId: interaction.channelId,
+				voiceChannelId: voiceChannel.id,
+				watchpartyId: watchpartyId,
+				title: title,
+				url: parsed.toString(),
+				host: interaction.user.tag,
+				startTime: startTime,
+				runtime: tmdbInfo.runtime,
+				onEnd: async () => {
+					const endVoiceChannel = interaction.guild?.channels.cache.get(voiceChannel.id);
+					const members = endVoiceChannel?.isVoiceBased() ? endVoiceChannel.members : null;
+					const { endAttendees } = await finishWatchparty(party, members, interaction.channel);
+					console.log(`[WATCHPARTY] Ended: ${title} - ${endAttendees.length} attendees at end`);
+				},
+			};
+			watchpartyTracker.startTracking(party);
 		}
 	},
 };
