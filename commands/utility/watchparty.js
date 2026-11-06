@@ -1,28 +1,75 @@
 // commands/utility/watchparty.js
 const { SlashCommandBuilder, EmbedBuilder, InteractionContextType } = require('discord.js');
 const { normalizeUrl, detectService } = require('../../utils/services');
-const { fetchTMDBInfo } = require('../../utils/tmdb');
-const { isSheetsConfigured, exportMovieToSheet, updateEndAttendees } = require('../../utils/sheetsExporter');
-const watchpartyTracker = require('../../utils/watchpartyTracker');
+const { searchTitles, getTitleDetails, findTitle } = require('../../utils/tmdb');
+const { isSheetsConfigured, exportMovieToSheet } = require('../../utils/sheetsExporter');
+const { getManager } = require('../../utils/watchpartyManager');
+const { voiceMembers, findLiveEvent } = require('../../utils/discordVoice');
 
-function voiceMemberTags(channel) {
-	return channel ? channel.members.map(m => m.user.tag) : [];
+// Autocomplete values look like "tmdb:movie:348"
+const PICK_RX = /^tmdb:(movie|tv):(\d+)$/;
+
+// Autocomplete fires on every keystroke; remember recent searches
+const SEARCH_CACHE_MS = 10 * 60 * 1000;
+const searchCache = new Map();
+
+async function cachedSearch(query) {
+	const key = query.toLowerCase();
+	const hit = searchCache.get(key);
+	if (hit && Date.now() - hit.at < SEARCH_CACHE_MS) return hit.results;
+	// Discord gives autocomplete 3 seconds to respond
+	const results = await searchTitles(query, { limit: 10, timeoutMs: 2000 });
+	searchCache.set(key, { at: Date.now(), results });
+	if (searchCache.size > 500) searchCache.delete(searchCache.keys().next().value);
+	return results;
+}
+
+function choiceLabel(t) {
+	const label = `${t.name}${t.year ? ` (${t.year})` : ''} · ${t.mediaType === 'tv' ? 'Show' : 'Movie'}`;
+	return label.length > 100 ? `${label.slice(0, 99)}…` : label;
+}
+
+/**
+ * Resolve the name option: a TMDB pick from autocomplete, or free text we look up.
+ * @returns {Promise<{displayName: string, title: Object}>}
+ */
+async function resolveTitle(input) {
+	const pick = PICK_RX.exec(input);
+	if (pick) {
+		const details = await getTitleDetails(pick[1], Number(pick[2]));
+		if (details) return { displayName: details.name, title: details };
+	}
+	// Free text: keep what they typed as the display name, but link a TMDB match if there is one
+	const match = await findTitle(input);
+	return { displayName: input, title: match ?? { name: input } };
 }
 
 module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('watchparty')
-		.setDescription('Post a link embed with brand color and large poster image.')
-		.addStringOption(o => o.setName('name').setDescription('Display name (used as title)').setRequired(true))
-		.addStringOption(o => o.setName('url').setDescription('Target URL').setRequired(true))
+		.setDescription('Start a watchparty: posts the link and records who watches.')
+		.addStringOption(o => o.setName('name')
+			.setDescription('Movie or show (pick from the list to link it to TMDB)')
+			.setRequired(true)
+			.setAutocomplete(true))
+		.addStringOption(o => o.setName('url').setDescription('Where to watch it').setRequired(true))
 		.setContexts(InteractionContextType.Guild),
 
 	category: 'utility',
 
+	async autocomplete(interaction) {
+		const query = interaction.options.getFocused().trim();
+		if (query.length < 2) return interaction.respond([]);
+		const results = await cachedSearch(query);
+		await interaction.respond(results.map(t => ({
+			name: choiceLabel(t),
+			value: `tmdb:${t.mediaType}:${t.tmdbId}`,
+		})));
+	},
+
 	async execute(interaction) {
 		await interaction.deferReply();
 
-		const title = interaction.options.getString('name', true).trim();
 		const parsed = normalizeUrl(interaction.options.getString('url', true).trim());
 		if (!parsed) {
 			return interaction.editReply('❌ Invalid URL. Please provide a full link like `https://…`');
@@ -30,64 +77,71 @@ module.exports = {
 		const url = parsed.toString();
 		const svc = detectService(parsed.hostname);
 
-		const tmdbInfo = await fetchTMDBInfo(title);
-		const poster = tmdbInfo.posterUrl
-			|| interaction.user.displayAvatarURL({ size: 512, extension: 'png', forceStatic: false });
-
-		const voiceChannel = interaction.member?.voice?.channel;
-		const attendees = voiceMemberTags(voiceChannel);
-		const startTime = new Date();
+		const { displayName, title } = await resolveTitle(interaction.options.getString('name', true).trim());
+		const voiceChannel = interaction.member?.voice?.channel ?? null;
+		const members = voiceMembers(voiceChannel) ?? [];
+		const liveEvent = voiceChannel ? await findLiveEvent(interaction.guild, voiceChannel.id) : null;
 
 		const embed = new EmbedBuilder()
-			.setTitle(title)
+			.setTitle(title.year ? `${displayName} (${title.year})` : displayName)
 			.setURL(url)
 			.setColor(svc.color)
-			.setImage(poster)
+			.setImage(title.posterUrl
+				|| interaction.user.displayAvatarURL({ size: 512, extension: 'png', forceStatic: false }))
 			.addFields({ name: 'Link', value: url, inline: false })
-			.setFooter({ text: svc.name });
+			.setFooter({ text: liveEvent ? `${svc.name} · ${liveEvent.name}` : svc.name });
 
-		if (attendees.length > 0) {
-			embed.addFields({ name: `Attendees (${attendees.length})`, value: attendees.join(', '), inline: false });
+		if (members.length > 0) {
+			embed.addFields({
+				name: `Attendees (${members.length})`,
+				value: members.map(m => m.tag).join(', '),
+				inline: false,
+			});
+		}
+		if (!voiceChannel) {
+			embed.addFields({ name: 'Attendance', value: 'Not tracked: join a voice channel before starting.', inline: false });
 		}
 
 		await interaction.editReply({ embeds: [embed] });
 
-		if (!isSheetsConfigured()) return;
+		// Attendance needs a voice channel; without one this is just a link post
+		if (!voiceChannel) return;
 
-		// Fire and forget: a Sheets failure shouldn't affect the posted embed
-		exportMovieToSheet({
-			title,
+		const manager = getManager();
+		const { party } = await manager.start({
+			guildId: interaction.guildId,
+			channelId: interaction.channelId,
+			voiceChannelId: voiceChannel.id,
+			hostId: interaction.user.id,
+			hostTag: interaction.user.tag,
+			displayName,
 			url,
-			postedDate: startTime,
-			host: interaction.user.tag,
 			service: svc.name,
-			attendees: attendees.join(', '),
-			genre: tmdbInfo.genre || '',
-			rewatchCount: 1,
-			runtime: tmdbInfo.runtime,
-			imdbId: tmdbInfo.imdbId,
-		}).catch(err => console.error('[SHEETS] Failed to export watchparty:', err.message));
+			title,
+			weeklyEventId: liveEvent?.id ?? null,
+			members,
+		});
 
-		// Auto-capture end attendees once the runtime has elapsed
-		if (voiceChannel && tmdbInfo.runtime) {
-			watchpartyTracker.startTracking({
-				channelId: interaction.channelId,
-				voiceChannelId: voiceChannel.id,
-				title,
-				url,
-				host: interaction.user.tag,
-				startTime,
-				runtime: tmdbInfo.runtime,
-				onEnd: () => {
-					const endChannel = interaction.guild?.channels.cache.get(voiceChannel.id);
-					if (!endChannel?.isVoiceBased()) return;
-
-					const endAttendees = voiceMemberTags(endChannel);
-					updateEndAttendees(title, startTime, endAttendees.join(', '))
-						.catch(err => console.error('[SHEETS] Failed to update end attendees:', err.message));
-					console.log(`[WATCHPARTY] Ended: ${title} - ${endAttendees.length} attendees at end`);
-				},
-			});
+		if (isSheetsConfigured()) {
+			try {
+				const { row, postedText } = await exportMovieToSheet({
+					title: displayName,
+					url,
+					postedDate: new Date(party.started_at),
+					host: interaction.user.tag,
+					service: svc.name,
+					attendees: members.map(m => m.tag).join(', '),
+					genre: title.genres || '',
+					rewatchCount: 1,
+					runtime: title.runtime,
+					imdbId: title.imdbId,
+				});
+				manager.setSheetRow(party.id, row, postedText);
+			}
+			catch (err) {
+				// The database has the record; the sheet is only a mirror
+				console.error('[SHEETS] Failed to mirror watchparty:', err.message);
+			}
 		}
 	},
 };

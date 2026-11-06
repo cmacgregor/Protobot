@@ -27,7 +27,7 @@ services:
     # GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id
     volumes:
       - ./.env:/usr/src/bot/.env
-      # Keeps /exportmovies' last-export timestamps across container restarts
+      # Watchparty database and /exportmovies state; keep this or records are lost on recreate
       - ./data:/usr/src/bot/data
 
     # Run deploy-commands.js before starting the bot

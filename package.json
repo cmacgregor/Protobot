@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node bot.js",
     "deploy": "node deploy-commands.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node --test 'test/**/*.test.js'"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +21,6 @@
     "eslint": "^8.57.1"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   }
 }
