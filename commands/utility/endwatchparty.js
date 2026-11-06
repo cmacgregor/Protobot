@@ -1,18 +1,18 @@
 // commands/utility/endwatchparty.js
-const { SlashCommandBuilder } = require('discord.js');
-const { updateEndAttendees } = require('../../utils/sheetsExporter');
+const { SlashCommandBuilder, InteractionContextType, MessageFlags } = require('discord.js');
+const { isSheetsConfigured, updateEndAttendees } = require('../../utils/sheetsExporter');
 const watchpartyTracker = require('../../utils/watchpartyTracker');
 
 module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('endwatchparty')
 		.setDescription('Manually end the active watchparty and record final attendees')
-		.setDMPermission(false),
+		.setContexts(InteractionContextType.Guild),
 
 	category: 'utility',
 
 	async execute(interaction) {
-		await interaction.deferReply({ ephemeral: true });
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
 		// Check if there's an active watchparty in this channel
 		const party = watchpartyTracker.getActive(interaction.channelId);
@@ -39,7 +39,7 @@ module.exports = {
 		watchpartyTracker.endTracking(interaction.channelId);
 
 		// Update Google Sheets with end attendees
-		if (process.env.GOOGLE_SHEETS_CREDENTIALS && process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
+		if (isSheetsConfigured()) {
 			try {
 				const updated = await updateEndAttendees(party.title, party.startTime, endAttendees.join(', '));
 

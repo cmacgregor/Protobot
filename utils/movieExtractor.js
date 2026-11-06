@@ -1,66 +1,15 @@
 // utils/movieExtractor.js
-const fetch = require('node-fetch');
-const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+const { normalizeUrl, detectService } = require('./services');
 
-// Port from watchparty.js
-function normalizeUrl(input) {
-	try {
-		const withScheme = /^(https?:)?\/\//i.test(input) ? input : `https://${input}`;
-		const u = new URL(withScheme);
-		if (!u.protocol.startsWith('http')) throw new Error('Invalid protocol');
-		return u;
-	}
-	catch {
-		return null;
-	}
-}
-
-const SERVICES = [
-	{ rx: /(^|\.)netflix\.com$/i, name: 'Netflix' },
-	{ rx: /(^|\.)hulu\.com$/i, name: 'Hulu' },
-	{ rx: /(^|\.)disneyplus\.com$/i, name: 'Disney+' },
-	{ rx: /(^|\.)primevideo\.com$/i, name: 'Prime Video' },
-	{ rx: /(^|\.)amazon\./i, name: 'Prime Video' },
-	{ rx: /(^|\.)crunchyroll\.com$/i, name: 'Crunchyroll' },
-	{ rx: /(^|\.)max\.com$/i, name: 'Max' },
-	{ rx: /(^|\.)hbomax\.com$/i, name: 'Max' },
-	{ rx: /(^|\.)tv\.apple\.com$/i, name: 'Apple TV' },
-	{ rx: /(^|\.)apple\.com$/i, name: 'Apple TV' },
-	{ rx: /(^|\.)youtube\.com$/i, name: 'YouTube' },
-	{ rx: /(^|\.)youtu\.be$/i, name: 'YouTube' },
-	{ rx: /(^|\.)teleparty\.com$/i, name: 'Teleparty' },
-	{ rx: /(^|\.)themoviedb\.org$/i, name: 'TMDB' },
-	{ rx: /(^|\.)imdb\.com$/i, name: 'IMDb' },
-	{ rx: /(^|\.)animekai\.to$/i, name: 'AnimeKai' },
-	{ rx: /(^|\.)peacocktv\.com$/i, name: 'Peacock' },
-	{ rx: /(^|\.)paramountplus\.com$/i, name: 'Paramount+' },
-];
-
-function detectService(hostname) {
-	const host = hostname.toLowerCase();
-	for (const s of SERVICES) if (s.rx.test(host)) return s.name;
-	return hostname;
-}
-
-// TMDB API wrapper
-async function searchTMDB(query) {
-	if (!TMDB_API_KEY || !query) return null;
-	try {
-		const url = `https://api.themoviedb.org/3/search/multi?api_key=${encodeURIComponent(TMDB_API_KEY)}&query=${encodeURIComponent(query)}&include_adult=false`;
-		const res = await fetch(url, { timeout: 6000 });
-		if (!res.ok) return null;
-		const data = await res.json();
-		return data?.results?.[0]?.title || data?.results?.[0]?.name || null;
-	}
-	catch {
-		return null;
-	}
-}
+const REQUEST_TIMEOUT_MS = 6000;
 
 // Extract title from Open Graph metadata
 async function fetchOpenGraphTitle(url) {
 	try {
-		const res = await fetch(url, { timeout: 6000, headers: { 'User-Agent': 'Mozilla/5.0' } });
+		const res = await fetch(url, {
+			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+			headers: { 'User-Agent': 'Mozilla/5.0' },
+		});
 		if (!res.ok) return null;
 		const html = await res.text();
 		const match = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
@@ -107,7 +56,7 @@ function extractTitleFromMessage(messageText, url) {
 	return null;
 }
 
-// Main extraction function - now accepts optional message text and Discord embed
+// Main extraction function - accepts optional message text and Discord embed
 async function extractMovieFromUrl(url, messageText = null, discordEmbed = null) {
 	const parsed = normalizeUrl(url);
 	if (!parsed) return null;
@@ -117,7 +66,7 @@ async function extractMovieFromUrl(url, messageText = null, discordEmbed = null)
 		return null;
 	}
 
-	const service = detectService(parsed.hostname);
+	const service = detectService(parsed.hostname).name;
 	let title = null;
 
 	// TMDB URLs - extract movie ID and fetch title

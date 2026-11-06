@@ -1,10 +1,10 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
 
 module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('raffle')
 		.setDescription('Pick a winner of the raffle from users in the same voice chat as the caller')
-		.setDMPermission(false),
+		.setContexts(InteractionContextType.Guild),
 	category: 'fun',
 	async execute(interaction) {
 		let responseMessage = 'You must be in a voice channel to raffle';

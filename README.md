@@ -2,41 +2,46 @@
 Discord bot for the BloodRedSakura Community discord. (www.twitch.tv/bloodredsakura)
 As well as my own learning.
 
+## Commands
+| Command | Who | What it does |
+|---|---|---|
+| `/watchparty name url` | Anyone | Posts an embed in the streaming service's brand color with a TMDB poster, logs the movie and voice-channel attendees to Google Sheets, and records end attendees once the runtime elapses |
+| `/endwatchparty` | Anyone in the party's voice channel | Ends the active watchparty early and records final attendees |
+| `/exportmovies [rescan]` | Server owner | Scans the channel for movie links posted since the last export and appends them to Google Sheets |
+| `/raffle` | Anyone | Picks a random member of your current voice channel |
+| `/info user\|server` | Anyone | Basic user or server info |
+| `/reload command` | Server owner | Reloads a command from disk without restarting |
+| `/ping` | Anyone | Pong |
+
 ## Setup
-1. Register your application/bot with discord
-2. Create and populate a .env file in the root directory of this project
-    - DISCORD_TOKEN - Discord bot secret
-    - CLIENT_ID - Id of the bot application
-    - GUILD_ID - Id of Guild the bot is registering "/" commands in
+1. Register your application/bot with Discord
+2. Create a `.env` file in the project root:
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `DISCORD_TOKEN` | Yes | Bot secret |
+| `CLIENT_ID` | No | Application id (read from the token if omitted) |
+| `GUILD_ID` | No | Register commands to one guild (instant) instead of globally |
+| `CLEAR_FIRST` | No | `true` clears existing commands before registering |
+| `TMDB_API_KEY` | No | Posters, genre and runtime for `/watchparty` and `/exportmovies` |
+| `GOOGLE_SHEETS_CREDENTIALS` | For Sheets | Base64-encoded service account JSON |
+| `GOOGLE_SHEETS_SPREADSHEET_ID` | For Sheets | Target spreadsheet (writes to `Sheet1`, columns A–J) |
 
 ### Running directly
-- Run node deploy-commands.js to register "/" commands with discord
-- Run node bot.js to start the bot from the command line
+Requires Node 20+.
+```sh
+npm install
+npm run deploy   # register slash commands with Discord
+npm start        # start the bot
+npm run lint
+```
 
-### Running in docker
- - The included github action builds for arm64 and amd64 architechtures  
- - There's an example docker-compose.yml included in the repo
-   - You'll have to provide your .env file from the setup section to the containerized application
+### Running in Docker
+- The GitHub Action builds `ghcr.io/cmacgregor/protobot` for amd64 and arm64 on every push to `main`
+- Copy `docker-compose.example.yml` to `docker-compose.yml` and provide your `.env`
+- Mount `./data` (as in the example) so `/exportmovies` remembers what it has already exported
 
 ## Roadmap
-- Raffle function to @ a random person in a configured voice channel
-  - Used to pick activities like movie night
-- Raffle setup function to configure the voice channel that's raffled on
-- CD github action to push to docker pi
-- Prettify links to the following streaming services 
-  -Information
-    - Clickable Hyperlink of media title
-    - Platform it's being watched on
-    - Embed color of service
-    - Thumbnail
-  - Services
-    - Hulu
-    - Amazon Video
-    - YouTube
-    - PlutoTV
-    - CrunchyRoll
-    - Teleparty
-      - Hulu
-      - Amazon video 
-      - PlutoTV
-      - CrunchyRoll
+- Raffle setup command to configure which voice channel is raffled on
+- CD GitHub Action to deploy to the Docker host
+- Persist active watchparties across restarts

@@ -8,9 +8,9 @@ const { REST, Routes } = require('discord.js');
 const TOKEN = process.env.DISCORD_TOKEN;
 let CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
-const CLEAR_FIRST = /^1|true$/i.test(process.env.CLEAR_FIRST || '');
+const CLEAR_FIRST = /^(1|true)$/i.test(process.env.CLEAR_FIRST || '');
 
-if (!TOKEN) throw new Error('Missing BOT_TOKEN in .env');
+if (!TOKEN) throw new Error('Missing DISCORD_TOKEN in .env');
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 

@@ -1,6 +1,0 @@
-{
-    "token": "DISCORD_TOKEN",
-    "prefix": "!",
-    "categoryChannelName": "Matchmaking Channels",
-    "raffleTickets": "tickets.json"
-}

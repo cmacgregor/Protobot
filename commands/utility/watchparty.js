@@ -1,84 +1,12 @@
 // commands/utility/watchparty.js
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const fetch = require('node-fetch');
-const { exportMovieToSheet, fetchTMDBInfo, updateEndAttendees } = require('../../utils/sheetsExporter');
+const { SlashCommandBuilder, EmbedBuilder, InteractionContextType } = require('discord.js');
+const { normalizeUrl, detectService } = require('../../utils/services');
+const { fetchTMDBInfo } = require('../../utils/tmdb');
+const { isSheetsConfigured, exportMovieToSheet, updateEndAttendees } = require('../../utils/sheetsExporter');
 const watchpartyTracker = require('../../utils/watchpartyTracker');
 
-const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
-
-const COLORS = {
-	DISCORD_BLURPLE: 0x5865F2,
-	NETFLIX: 0xE50914,
-	HULU: 0x1CE783,
-	DISNEY_PLUS: 0x113CCF,
-	PRIME_VIDEO: 0x00A8E1,
-	CRUNCHYROLL: 0xF47521,
-	MAX: 0x0026FF,
-	APPLE_TV: 0x000000,
-	PEACOCK: 0xFFC700,
-	PARAMOUNT_PLUS: 0x0064FF,
-	YOUTUBE: 0xFF0000,
-	// forest green
-	ANIMEKAI: 0x228B22,
-	// Teleparty red-orange
-	TELEPARTY: 0xE54037,
-};
-
-const SERVICES = [
-	{ rx: /(^|\.)animekai\.to$/i, color: COLORS.ANIMEKAI, name: 'AnimeKai' },
-	{ rx: /(^|\.)netflix\.com$/i, color: COLORS.NETFLIX, name: 'Netflix' },
-	{ rx: /(^|\.)hulu\.com$/i, color: COLORS.HULU, name: 'Hulu' },
-	{ rx: /(^|\.)disneyplus\.com$/i, color: COLORS.DISNEY_PLUS, name: 'Disney+' },
-	{ rx: /(^|\.)primevideo\.com$/i, color: COLORS.PRIME_VIDEO, name: 'Prime Video' },
-	{ rx: /(^|\.)amazon\./i, color: COLORS.PRIME_VIDEO, name: 'Prime Video' },
-	{ rx: /(^|\.)crunchyroll\.com$/i, color: COLORS.CRUNCHYROLL, name: 'Crunchyroll' },
-	{ rx: /(^|\.)max\.com$/i, color: COLORS.MAX, name: 'Max' },
-	{ rx: /(^|\.)hbomax\.com$/i, color: COLORS.MAX, name: 'Max' },
-	{ rx: /(^|\.)tv\.apple\.com$/i, color: COLORS.APPLE_TV, name: 'Apple TV' },
-	{ rx: /(^|\.)apple\.com$/i, color: COLORS.APPLE_TV, name: 'Apple TV' },
-	{ rx: /(^|\.)peacocktv\.com$/i, color: COLORS.PEACOCK, name: 'Peacock' },
-	{ rx: /(^|\.)paramountplus\.com$/i, color: COLORS.PARAMOUNT_PLUS, name: 'Paramount+' },
-	{ rx: /(^|\.)youtube\.com$/i, color: COLORS.YOUTUBE, name: 'YouTube' },
-	{ rx: /(^|\.)youtu\.be$/i, color: COLORS.YOUTUBE, name: 'YouTube' },
-	{ rx: /(^|\.)teleparty\.com$/i, color: COLORS.TELEPARTY, name: 'Teleparty' },
-];
-
-function normalizeUrl(input) {
-	try {
-		const withScheme = /^(https?:)?\/\//i.test(input) ? input : `https://${input}`;
-		const u = new URL(withScheme);
-		if (!u.protocol.startsWith('http')) throw new Error('Invalid protocol');
-		return u;
-	}
-	catch {
-		return null;
-	}
-}
-
-function detectService(hostname) {
-	const host = hostname.toLowerCase();
-	for (const s of SERVICES) if (s.rx.test(host)) return s;
-	return { color: COLORS.DISCORD_BLURPLE, name: host };
-}
-
-async function tmdbPoster(title) {
-	if (!TMDB_API_KEY || !title) return null;
-	try {
-		const url = `https://api.themoviedb.org/3/search/multi?api_key=${encodeURIComponent(
-			TMDB_API_KEY,
-		)}&query=${encodeURIComponent(title)}&include_adult=false&language=en-US&page=1`;
-		const res = await fetch(url, { timeout: 6000 });
-		if (!res.ok) return null;
-		const data = await res.json();
-		if (!data?.results?.length) return null;
-
-		const best = data.results.find(r => r.poster_path) || data.results[0];
-		if (!best?.poster_path) return null;
-		return `https://image.tmdb.org/t/p/w780${best.poster_path}`;
-	}
-	catch {
-		return null;
-	}
+function voiceMemberTags(channel) {
+	return channel ? channel.members.map(m => m.user.tag) : [];
 }
 
 module.exports = {
@@ -86,105 +14,80 @@ module.exports = {
 		.setName('watchparty')
 		.setDescription('Post a link embed with brand color and large poster image.')
 		.addStringOption(o => o.setName('name').setDescription('Display name (used as title)').setRequired(true))
-		.addStringOption(o => o.setName('url').setDescription('Target URL').setRequired(true)),
+		.addStringOption(o => o.setName('url').setDescription('Target URL').setRequired(true))
+		.setContexts(InteractionContextType.Guild),
+
+	category: 'utility',
 
 	async execute(interaction) {
 		await interaction.deferReply();
 
 		const title = interaction.options.getString('name', true).trim();
-		const rawUrl = interaction.options.getString('url', true).trim();
-		const parsed = normalizeUrl(rawUrl);
+		const parsed = normalizeUrl(interaction.options.getString('url', true).trim());
 		if (!parsed) {
 			return interaction.editReply('❌ Invalid URL. Please provide a full link like `https://…`');
 		}
-
+		const url = parsed.toString();
 		const svc = detectService(parsed.hostname);
 
-		// Fetch TMDB info (poster, genre, runtime)
 		const tmdbInfo = await fetchTMDBInfo(title);
-		let poster = await tmdbPoster(title);
-		if (!poster) {
-			poster = interaction.user.displayAvatarURL({ size: 512, extension: 'png', forceStatic: false });
-		}
+		const poster = tmdbInfo.posterUrl
+			|| interaction.user.displayAvatarURL({ size: 512, extension: 'png', forceStatic: false });
 
-		// Capture attendees from voice channel
 		const voiceChannel = interaction.member?.voice?.channel;
-		let attendees = [];
-		if (voiceChannel) {
-			attendees = voiceChannel.members.map(m => m.user.tag);
-		}
-
+		const attendees = voiceMemberTags(voiceChannel);
 		const startTime = new Date();
 
 		const embed = new EmbedBuilder()
 			.setTitle(title)
-			.setURL(parsed.toString())
+			.setURL(url)
 			.setColor(svc.color)
-			.setImage(poster);
+			.setImage(poster)
+			.addFields({ name: 'Link', value: url, inline: false })
+			.setFooter({ text: svc.name });
 
-		// Add link field
-		embed.addFields({ name: 'Link', value: parsed.toString(), inline: false });
-
-		// Add attendees field if any
 		if (attendees.length > 0) {
-			embed.addFields({
-				name: `Attendees (${attendees.length})`,
-				value: attendees.join(', '),
-				inline: false,
-			});
+			embed.addFields({ name: `Attendees (${attendees.length})`, value: attendees.join(', '), inline: false });
 		}
-
-		embed.setFooter({ text: svc.name });
 
 		await interaction.editReply({ embeds: [embed] });
 
-		// Export to Google Sheets (non-blocking, failures won't affect user experience)
-		if (process.env.GOOGLE_SHEETS_CREDENTIALS && process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
-			// Use command-provided title (fallback if TMDB doesn't find it)
-			exportMovieToSheet({
-				title: title,
-				url: parsed.toString(),
-				postedDate: startTime,
+		if (!isSheetsConfigured()) return;
+
+		// Fire and forget: a Sheets failure shouldn't affect the posted embed
+		exportMovieToSheet({
+			title,
+			url,
+			postedDate: startTime,
+			host: interaction.user.tag,
+			service: svc.name,
+			attendees: attendees.join(', '),
+			genre: tmdbInfo.genre || '',
+			rewatchCount: 1,
+			runtime: tmdbInfo.runtime,
+			imdbId: tmdbInfo.imdbId,
+		}).catch(err => console.error('[SHEETS] Failed to export watchparty:', err.message));
+
+		// Auto-capture end attendees once the runtime has elapsed
+		if (voiceChannel && tmdbInfo.runtime) {
+			watchpartyTracker.startTracking({
+				channelId: interaction.channelId,
+				voiceChannelId: voiceChannel.id,
+				title,
+				url,
 				host: interaction.user.tag,
-				service: svc.name,
-				attendees: attendees.join(', '),
-				genre: tmdbInfo.genre || '',
-				rewatchCount: 1,
+				startTime,
 				runtime: tmdbInfo.runtime,
-				imdbId: tmdbInfo.imdbId,
-			}).catch(err => {
-				console.error('[SHEETS] Failed to export watchparty to Google Sheets:', err.message);
+				onEnd: () => {
+					const endChannel = interaction.guild?.channels.cache.get(voiceChannel.id);
+					if (!endChannel?.isVoiceBased()) return;
+
+					const endAttendees = voiceMemberTags(endChannel);
+					updateEndAttendees(title, startTime, endAttendees.join(', '))
+						.catch(err => console.error('[SHEETS] Failed to update end attendees:', err.message));
+					console.log(`[WATCHPARTY] Ended: ${title} - ${endAttendees.length} attendees at end`);
+				},
 			});
-
-			// Start tracking for end-of-movie attendee capture
-			if (voiceChannel && tmdbInfo.runtime) {
-				watchpartyTracker.startTracking({
-					channelId: interaction.channelId,
-					voiceChannelId: voiceChannel.id,
-					title: title,
-					url: parsed.toString(),
-					host: interaction.user.tag,
-					startTime: startTime,
-					runtime: tmdbInfo.runtime,
-					onEnd: async () => {
-						// Capture end attendees
-						const guild = interaction.guild;
-						if (!guild) return;
-
-						const endVoiceChannel = guild.channels.cache.get(voiceChannel.id);
-						if (endVoiceChannel?.isVoiceBased()) {
-							const endAttendees = endVoiceChannel.members.map(m => m.user.tag);
-
-							// Update sheet with end attendees
-							updateEndAttendees(title, startTime, endAttendees.join(', ')).catch(err => {
-								console.error('[SHEETS] Failed to update end attendees:', err.message);
-							});
-
-							console.log(`[WATCHPARTY] Ended: ${title} - ${endAttendees.length} attendees at end`);
-						}
-					},
-				});
-			}
 		}
 	},
 };
