@@ -1,12 +1,13 @@
 // utils/sheetsExporter.js
-// Google Sheets writes for the movie log.
-// Columns A–J: Title (IMDb link), URL, Posted Date, Service, Genre, Rewatch Count,
-// Runtime, Host, Start Attendees, End Attendees
+// Google Sheets mirror of the movie log. The database is the source of truth;
+// a watchparty is written here once, when it ends.
+// Columns A–K: Title (IMDb link), URL, Posted Date, Service, Genre, Rewatch Count,
+// Runtime, Host, Start Attendees, End Attendees, Type
 
 const { auth, sheets } = require('@googleapis/sheets');
 const { fetchTMDBInfo } = require('./tmdb');
 
-const SHEET_RANGE = 'Sheet1!A2:J2';
+const SHEET_RANGE = 'Sheet1!A2:K2';
 
 let cachedClient = null;
 
@@ -31,6 +32,13 @@ function getSheetsClient() {
 	return cachedClient;
 }
 
+const TYPE_LABELS = { movie: 'Movie', tv: 'Show' };
+
+/**
+ * Build one sheet row (columns A–K).
+ * @param {Object} movie
+ * @param {string} [titleValue] - what goes in column A (plain title or a HYPERLINK formula)
+ */
 function toRow(movie, titleValue = movie.title) {
 	return [
 		titleValue,
@@ -42,9 +50,16 @@ function toRow(movie, titleValue = movie.title) {
 		movie.runtime || '',
 		movie.host,
 		movie.attendees || '',
-		// End attendees are filled in later by updateEndAttendees
-		'',
+		movie.endAttendees || '',
+		TYPE_LABELS[movie.mediaType] || '',
 	];
+}
+
+/** Column A value: a link to IMDb when we know the id. Quotes are doubled so they can't break the formula. */
+function titleCell(title, imdbId) {
+	return imdbId
+		? `=HYPERLINK("https://www.imdb.com/title/${imdbId}/", "${title.replace(/"/g, '""')}")`
+		: title;
 }
 
 async function appendRows(rows, valueInputOption) {
@@ -58,8 +73,9 @@ async function appendRows(rows, valueInputOption) {
 }
 
 /**
- * Append a single watchparty entry. Missing genre/runtime/IMDb id are looked up on TMDB.
- * @param {Object} movie - title, url, postedDate, host, service, attendees, genre?, rewatchCount?, runtime?, imdbId?
+ * Append a finished watchparty.
+ * @param {Object} movie - title, url, postedDate, service, genre, rewatchCount, runtime, imdbId,
+ *   host, attendees (start), endAttendees, mediaType ('movie'|'tv'|null)
  */
 async function exportMovieToSheet(movie) {
 	// Fail fast before any TMDB lookups
@@ -73,13 +89,9 @@ async function exportMovieToSheet(movie) {
 		imdbId = imdbId || info.imdbId;
 	}
 
-	// Double any quotes so a title like 'Say "Hi"' can't break the formula
-	const titleValue = imdbId
-		? `=HYPERLINK("https://www.imdb.com/title/${imdbId}/", "${movie.title.replace(/"/g, '""')}")`
-		: movie.title;
-
+	const row = toRow({ ...movie, genre, runtime }, titleCell(movie.title, imdbId));
 	// USER_ENTERED so the HYPERLINK formula is evaluated
-	await appendRows([toRow({ ...movie, genre, runtime }, titleValue)], 'USER_ENTERED');
+	await appendRows([row], 'USER_ENTERED');
 }
 
 /**
@@ -91,33 +103,23 @@ async function exportMoviesToSheet(movies) {
 }
 
 /**
- * Fill in end attendees for a watchparty row, matched by title and start time.
- * @returns {Promise<boolean>} true if a row was updated
+ * All values in the movie log (header row included), as displayed in the sheet.
+ * @returns {Promise<string[][]>}
  */
-async function updateEndAttendees(title, startTime, endAttendees) {
-	const client = getSheetsClient();
-	const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-
-	const response = await client.spreadsheets.values.get({ spreadsheetId, range: 'Sheet1!A:J' });
-	const rows = response.data.values || [];
-	const targetTimestamp = startTime.toLocaleString();
-
-	// Skip the header row; sheet rows are 1-indexed
-	const index = rows.findIndex((row, i) => i > 0 && row[0] === title && row[2] === targetTimestamp);
-	if (index === -1) {
-		console.warn(`[SHEETS] Could not find row for "${title}" with timestamp ${targetTimestamp}`);
-		return false;
-	}
-
-	const rowNumber = index + 1;
-	await client.spreadsheets.values.update({
-		spreadsheetId,
-		range: `Sheet1!J${rowNumber}`,
-		valueInputOption: 'RAW',
-		requestBody: { values: [[endAttendees]] },
+async function readSheetRows() {
+	const response = await getSheetsClient().spreadsheets.values.get({
+		spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+		range: 'Sheet1!A:K',
 	});
-	console.log(`[SHEETS] Updated end attendees for "${title}" at row ${rowNumber}`);
-	return true;
+	return response.data.values || [];
 }
 
-module.exports = { isSheetsConfigured, exportMovieToSheet, exportMoviesToSheet, updateEndAttendees };
+module.exports = {
+	isSheetsConfigured,
+	exportMovieToSheet,
+	exportMoviesToSheet,
+	readSheetRows,
+	// Exported for tests
+	toRow,
+	titleCell,
+};
