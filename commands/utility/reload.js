@@ -1,5 +1,5 @@
 // commands/utility/reload.js
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { PermissionLevel } = require('../../utils/permissions');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -68,8 +68,7 @@ module.exports = {
 		const input = interaction.options.getString('command', true).trim().toLowerCase();
 
 		// Give ourselves a bit more time and avoid the 3s window
-		try { await interaction.deferReply({ ephemeral: true }); }
-		catch {}
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
 		// Root of commands is the parent of this file’s directory
 		// e.g. .../commands/utility/reload.js -> .../commands

@@ -5,12 +5,12 @@
   "dependencies": {
     "@googleapis/sheets": "^13.0.1",
     "discord.js": "^14.16.3",
-    "dotenv": "^16.3.1",
-    "node-fetch": "^2.7.0",
-    "puppeteer": "^24.10.2"
+    "dotenv": "^16.3.1"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node bot.js",
+    "deploy": "node deploy-commands.js",
+    "lint": "eslint ."
   },
   "keywords": [],
   "author": "",
@@ -18,5 +18,8 @@
   "description": "",
   "devDependencies": {
     "eslint": "^8.57.1"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
