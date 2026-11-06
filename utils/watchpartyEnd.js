@@ -2,8 +2,8 @@
 // What happens when a watchparty ends: a summary in the text channel and the sheet mirror.
 
 const { EmbedBuilder } = require('discord.js');
-const { isSheetsConfigured, updateEndAttendees } = require('./sheetsExporter');
-const { DEFAULT_COLOR } = require('./services');
+const { isSheetsConfigured, exportMovieToSheet } = require('./sheetsExporter');
+const { DEFAULT_COLOR, normalizeUrl, detectService } = require('./services');
 
 const REASONS = {
 	manual: 'Ended by command',
@@ -21,9 +21,9 @@ function formatDuration(minutes) {
 
 /**
  * @param {import('discord.js').Client} client
- * @param {{party: Object, title: Object|null, attendees: Object[], reason: string}} summary
+ * @param {{party: Object, title: Object|null, attendees: Object[], reason: string, watchCount: number}} summary
  */
-async function handleWatchpartyEnd(client, { party, title, attendees, reason }) {
+async function handleWatchpartyEnd(client, { party, title, attendees, reason, watchCount }) {
 	const watched = attendees.filter(a => a.watched);
 	const minutes = Math.round((Date.parse(party.ended_at) - Date.parse(party.started_at)) / 60000);
 
@@ -52,15 +52,28 @@ async function handleWatchpartyEnd(client, { party, title, attendees, reason }) 
 	}
 
 	if (isSheetsConfigured()) {
-		const atEnd = attendees.filter(a => a.presentAtEnd).map(a => a.userTag).filter(Boolean);
+		const tags = pick => attendees.filter(pick).map(a => a.userTag).filter(Boolean).join(', ');
+		const parsed = party.url ? normalizeUrl(party.url) : null;
 		try {
-			await updateEndAttendees(
-				{ title: party.display_name, sheetRow: party.sheet_row, postedText: party.posted_text },
-				atEnd.join(', '),
-			);
+			await exportMovieToSheet({
+				// The media's own name when TMDB knows it, otherwise what was typed
+				title: title?.name || party.display_name,
+				url: party.url || '',
+				postedDate: new Date(party.started_at),
+				service: parsed ? detectService(parsed.hostname).name : '',
+				genre: title?.genres || '',
+				rewatchCount: watchCount,
+				runtime: title?.runtime,
+				imdbId: title?.imdb_id,
+				host: party.host_tag || '',
+				attendees: tags(a => a.presentAtStart),
+				endAttendees: tags(a => a.presentAtEnd),
+				mediaType: title?.media_type,
+			});
 		}
 		catch (err) {
-			console.error('[SHEETS] Failed to update end attendees:', err.message);
+			// The database has the record; the sheet is only a mirror
+			console.error(`[SHEETS] Failed to mirror "${party.display_name}":`, err.message);
 		}
 	}
 }

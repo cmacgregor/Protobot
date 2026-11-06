@@ -1,33 +1,24 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseRowNumber, findWatchpartyRow } = require('../utils/sheetsExporter');
+const { toRow, titleCell } = require('../utils/sheetsExporter');
 
-test('parseRowNumber reads the first row of an A1 range', () => {
-	assert.equal(parseRowNumber('Sheet1!A57:J57'), 57);
-	assert.equal(parseRowNumber('\'Movie Log\'!A3'), 3);
-	assert.equal(parseRowNumber(undefined), null);
-	assert.equal(parseRowNumber('garbage'), null);
+test('toRow fills columns A–K in order, with the type label last', () => {
+	const row = toRow({
+		title: 'Alien', url: 'https://x', postedDate: new Date('2026-11-05T02:00:00Z'), service: 'Netflix',
+		genre: 'Horror', rewatchCount: 2, runtime: 117, host: 'alice',
+		attendees: 'alice, bob', endAttendees: 'alice', mediaType: 'movie',
+	});
+	assert.equal(row.length, 11);
+	assert.deepEqual([row[0], row[1], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10]],
+		['Alien', 'https://x', 'Netflix', 'Horror', 2, 117, 'alice', 'alice, bob', 'alice', 'Movie']);
+	assert.equal(toRow({ title: 'x', postedDate: new Date(), mediaType: 'tv' })[10], 'Show');
+	assert.equal(toRow({ title: 'x', postedDate: new Date() })[10], '');
 });
 
-const header = ['Title', 'URL', 'Posted Date', 'Service', 'Genre', 'Rewatch', 'Runtime', 'Host', 'Start', 'End'];
-
-test('findWatchpartyRow prefers the exact posted date', () => {
-	const rows = [
-		header,
-		['Alien', 'u', '1/1/2026, 8:00:00 PM', '', '', '', '', '', 'a', ''],
-		['Alien', 'u', '2/1/2026, 8:00:00 PM', '', '', '', '', '', 'a', ''],
-	];
-	assert.equal(findWatchpartyRow(rows, { title: 'Alien', postedText: '1/1/2026, 8:00:00 PM' }), 2);
-});
-
-test('findWatchpartyRow falls back to the newest unfinished row with that title', () => {
-	const rows = [
-		header,
-		['Alien', 'u', 'reformatted', '', '', '', '', '', 'a', ''],
-		['Alien', 'u', 'reformatted', '', '', '', '', '', 'a', 'done'],
-		['Heat', 'u', 'x', '', '', '', '', '', 'a', ''],
-		['Alien', 'u', 'reformatted too'],
-	];
-	assert.equal(findWatchpartyRow(rows, { title: 'Alien', postedText: '1/1/2026, 8:00:00 PM' }), 5);
-	assert.equal(findWatchpartyRow(rows, { title: 'Nope' }), null);
+test('titleCell links to IMDb and escapes quotes', () => {
+	assert.equal(titleCell('Alien', null), 'Alien');
+	assert.equal(
+		titleCell('Say "Hi"', 'tt123'),
+		'=HYPERLINK("https://www.imdb.com/title/tt123/", "Say ""Hi""")',
+	);
 });

@@ -2,7 +2,6 @@
 const { SlashCommandBuilder, EmbedBuilder, InteractionContextType } = require('discord.js');
 const { normalizeUrl, detectService } = require('../../utils/services');
 const { searchTitles, getTitleDetails, findTitle } = require('../../utils/tmdb');
-const { isSheetsConfigured, exportMovieToSheet } = require('../../utils/sheetsExporter');
 const { getManager } = require('../../utils/watchpartyManager');
 const { voiceMembers, findLiveEvent } = require('../../utils/discordVoice');
 
@@ -107,8 +106,8 @@ module.exports = {
 		// Attendance needs a voice channel; without one this is just a link post
 		if (!voiceChannel) return;
 
-		const manager = getManager();
-		const { party } = await manager.start({
+		// Recorded in the database now; mirrored to Google Sheets when it ends
+		await getManager().start({
 			guildId: interaction.guildId,
 			channelId: interaction.channelId,
 			voiceChannelId: voiceChannel.id,
@@ -116,32 +115,9 @@ module.exports = {
 			hostTag: interaction.user.tag,
 			displayName,
 			url,
-			service: svc.name,
 			title,
 			weeklyEventId: liveEvent?.id ?? null,
 			members,
 		});
-
-		if (isSheetsConfigured()) {
-			try {
-				const { row, postedText } = await exportMovieToSheet({
-					title: displayName,
-					url,
-					postedDate: new Date(party.started_at),
-					host: interaction.user.tag,
-					service: svc.name,
-					attendees: members.map(m => m.tag).join(', '),
-					genre: title.genres || '',
-					rewatchCount: 1,
-					runtime: title.runtime,
-					imdbId: title.imdbId,
-				});
-				manager.setSheetRow(party.id, row, postedText);
-			}
-			catch (err) {
-				// The database has the record; the sheet is only a mirror
-				console.error('[SHEETS] Failed to mirror watchparty:', err.message);
-			}
-		}
 	},
 };

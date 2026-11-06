@@ -44,15 +44,15 @@ function getTitle(db, id) {
  */
 function insertParty(db, p) {
 	return db.prepare(`
-		INSERT INTO watchparties (guild_id, channel_id, voice_channel_id, title_id, display_name, url, service,
-			host_id, host_tag, started_at, ended_at, end_reason, weekly_event_id, source, sheet_row, posted_text)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO watchparties (guild_id, channel_id, voice_channel_id, title_id, display_name, url,
+			host_id, host_tag, started_at, ended_at, end_reason, weekly_event_id, source)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id
 	`).get(
 		p.guildId ?? null, p.channelId ?? null, p.voiceChannelId ?? null, p.titleId ?? null,
-		p.displayName, p.url ?? null, p.service ?? null, p.hostId ?? null, p.hostTag ?? null,
+		p.displayName, p.url ?? null, p.hostId ?? null, p.hostTag ?? null,
 		p.startedAt ?? null, p.endedAt ?? null, p.endReason ?? null, p.weeklyEventId ?? null,
-		p.source ?? 'live', p.sheetRow ?? null, p.postedText ?? null,
+		p.source ?? 'live',
 	).id;
 }
 
@@ -68,10 +68,6 @@ function getActivePartyInChannel(db, channelId) {
 
 function listActiveParties(db) {
 	return db.prepare('SELECT * FROM watchparties WHERE ended_at IS NULL ORDER BY id').all();
-}
-
-function setPartySheetRow(db, id, sheetRow, postedText) {
-	db.prepare('UPDATE watchparties SET sheet_row = ?, posted_text = ? WHERE id = ?').run(sheetRow, postedText, id);
 }
 
 function openSession(db, partyId, userId, userTag, atIso) {
@@ -132,15 +128,28 @@ function listAttendees(db, partyId) {
 }
 
 /**
- * Is a sheet row already in the database (imported, or logged live and mirrored)?
- * Matches on the Posted Date text, or on the row number recorded when it was mirrored.
+ * Is a sheet entry already in the database (imported, or mirrored from a live party)?
+ * Matches the name against what was typed or the TMDB title, and the start time to within
+ * a minute (the sheet's Posted Date has no milliseconds). Undated entries match undated rows.
+ * @param {string} name
+ * @param {string|null} startedAt - ISO
  */
-function partyExistsForSheetEntry(db, displayName, postedText, sheetRow) {
+function partyExistsForSheetEntry(db, name, startedAt) {
 	return Boolean(db.prepare(`
-		SELECT 1 FROM watchparties
-		WHERE lower(display_name) = lower(?) AND (posted_text IS ? OR sheet_row = ?)
+		SELECT 1 FROM watchparties w LEFT JOIN titles t ON t.id = w.title_id
+		WHERE (lower(w.display_name) = lower(?1) OR lower(t.name) = lower(?1))
+			AND (
+				(?2 IS NULL AND w.started_at IS NULL)
+				OR abs(julianday(w.started_at) - julianday(?2)) * 86400 < 60
+			)
 		LIMIT 1
-	`).get(displayName, postedText ?? null, sheetRow ?? null));
+	`).get(name, startedAt ?? null));
+}
+
+/** How many ended parties have watched this title (rewatch count). */
+function countTitleWatches(db, titleId) {
+	return db.prepare('SELECT count(*) AS n FROM watchparties WHERE title_id = ? AND ended_at IS NOT NULL')
+		.get(titleId).n;
 }
 
 module.exports = {
@@ -150,7 +159,6 @@ module.exports = {
 	getParty,
 	getActivePartyInChannel,
 	listActiveParties,
-	setPartySheetRow,
 	openSession,
 	closeSession,
 	listOpenSessionUsers,
@@ -159,4 +167,5 @@ module.exports = {
 	insertAttendees,
 	listAttendees,
 	partyExistsForSheetEntry,
+	countTitleWatches,
 };

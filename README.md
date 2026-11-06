@@ -7,7 +7,7 @@ As well as my own learning.
 |---|---|---|
 | `/watchparty name url` | Anyone | Starts a watchparty: posts the link with a TMDB poster and records who watches (see below). Pick the title from the suggestions to link it to TMDB |
 | `/endwatchparty` | Host, or anyone in the party's voice channel | Ends the watchparty in this channel now |
-| `/importsheet` | Server owner | Imports the existing Google Sheets log into the database. Safe to re-run |
+| `/importsheet` | Server owner | Imports the existing Google Sheets log into the database, matching old usernames to current members. Safe to re-run |
 | `/exportmovies [rescan]` | Server owner | Scans the channel for movie links posted since the last export and appends them to Google Sheets |
 | `/raffle` | Anyone | Picks a random member of your current voice channel |
 | `/info user\|server` | Anyone | Basic user or server info |
@@ -15,7 +15,7 @@ As well as my own learning.
 | `/ping` | Anyone | Pong |
 
 ## Watchparties
-Watchparty records live in a SQLite database (`data/protobot.db`). Google Sheets, if configured, gets a copy of each one.
+Watchparty records live in a SQLite database (`data/protobot.db`). If Google Sheets is configured, each party is also written there as one row when it ends, using the title's TMDB name.
 
 - **Attendance** is tracked from voice joins and leaves in the host's voice channel while the party runs. Anyone there for at least half of it counts as having watched. Bots are ignored.
 - **Ending:** movies end at their TMDB runtime plus 15 minutes. Any party ends once its voice channel has been empty for 10 minutes (recorded as the time everyone left), with `/endwatchparty`, when a new party starts in the same channel, or after 8 hours. The bot posts a summary of who watched.
@@ -34,7 +34,7 @@ Watchparty records live in a SQLite database (`data/protobot.db`). Google Sheets
 | `CLEAR_FIRST` | No | `true` clears existing commands before registering |
 | `TMDB_API_KEY` | No | Posters, genre and runtime for `/watchparty` and `/exportmovies` |
 | `GOOGLE_SHEETS_CREDENTIALS` | For Sheets | Base64-encoded service account JSON |
-| `GOOGLE_SHEETS_SPREADSHEET_ID` | For Sheets | Target spreadsheet (writes to `Sheet1`, columns A–J) |
+| `GOOGLE_SHEETS_SPREADSHEET_ID` | For Sheets | Target spreadsheet. Writes to `Sheet1`, columns A–K: Title, URL, Posted Date, Service, Genre, Rewatch Count, Runtime, Host, Start Attendees, End Attendees, Type |
 | `DB_PATH` | No | Database file (default `./data/protobot.db`) |
 
 ### Running directly

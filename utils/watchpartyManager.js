@@ -59,7 +59,6 @@ class WatchpartyManager {
 	 * @param {string} p.hostTag
 	 * @param {string} p.displayName
 	 * @param {string} p.url
-	 * @param {string} p.service
 	 * @param {Object} p.title - TMDB details (or just {name}) for upsertTitle
 	 * @param {string|null} [p.weeklyEventId]
 	 * @param {{id: string, tag: string}[]} p.members - humans in voice right now
@@ -78,7 +77,6 @@ class WatchpartyManager {
 			titleId,
 			displayName: p.displayName,
 			url: p.url,
-			service: p.service,
 			hostId: p.hostId,
 			hostTag: p.hostTag,
 			startedAt: nowIso,
@@ -94,10 +92,6 @@ class WatchpartyManager {
 	/** @returns {Object|null} the active party in a text channel */
 	getActive(channelId) {
 		return store.getActivePartyInChannel(this.db, channelId);
-	}
-
-	setSheetRow(partyId, sheetRow, postedText) {
-		store.setPartySheetRow(this.db, partyId, sheetRow, postedText);
 	}
 
 	/**
@@ -150,6 +144,8 @@ class WatchpartyManager {
 			title: store.getTitle(this.db, party.title_id),
 			attendees,
 			reason,
+			// Including this one
+			watchCount: party.title_id ? store.countTitleWatches(this.db, party.title_id) : 1,
 		};
 		console.log(`[WATCHPARTY] Ended "${party.display_name}" (${reason}): ${attendees.filter(a => a.watched).length} watched`);
 

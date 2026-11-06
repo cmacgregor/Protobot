@@ -44,7 +44,7 @@ const show = { tmdbId: 1396, mediaType: 'tv', name: 'Breaking Bad', runtime: 45 
 function startParams(overrides = {}) {
 	return {
 		guildId: 'g', channelId: 'text', voiceChannelId: 'vc', hostId: alice.id, hostTag: alice.tag,
-		displayName: 'Alien', url: 'https://example.com', service: 'Netflix', title: movie,
+		displayName: 'Alien', url: 'https://example.com', title: movie,
 		members: voice.get('vc') ?? [], ...overrides,
 	};
 }
@@ -176,6 +176,31 @@ test('restore ends parties whose runtime finished while offline, at the schedule
 	assert.equal(ended.length, 1);
 	assert.equal(ended[0].reason, 'runtime');
 	assert.equal(ended[0].party.ended_at, new Date(T0 + 132 * MIN).toISOString());
+});
+
+test('summary carries the rewatch count', async () => {
+	const manager = makeManager();
+	const { party: one } = await manager.start(startParams());
+	assert.equal((await manager.end(one.id, 'manual')).watchCount, 1);
+	const { party: two } = await manager.start(startParams());
+	assert.equal((await manager.end(two.id, 'manual')).watchCount, 2);
+});
+
+test('sheet entries already in the database are recognised for re-imports', async () => {
+	const manager = makeManager();
+	// Typed "alien" but TMDB's name is "Alien"; either matches
+	const { party } = await manager.start(startParams({ displayName: 'alien' }));
+	await manager.end(party.id, 'manual');
+	const startedAt = party.started_at;
+	const thirtySecondsLater = new Date(Date.parse(startedAt) + 30 * 1000).toISOString();
+	assert.equal(store.partyExistsForSheetEntry(db, 'Alien', thirtySecondsLater), true);
+	assert.equal(store.partyExistsForSheetEntry(db, 'ALIEN', startedAt), true);
+	assert.equal(store.partyExistsForSheetEntry(db, 'Alien', new Date(Date.parse(startedAt) + 5 * MIN).toISOString()), false);
+	assert.equal(store.partyExistsForSheetEntry(db, 'Heat', startedAt), false);
+
+	store.insertParty(db, { displayName: 'Undated', source: 'import' });
+	assert.equal(store.partyExistsForSheetEntry(db, 'undated', null), true);
+	assert.equal(store.partyExistsForSheetEntry(db, 'Alien', null), false);
 });
 
 test('free-text titles without TMDB are deduplicated by name', () => {

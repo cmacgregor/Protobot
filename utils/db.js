@@ -30,16 +30,13 @@ const MIGRATIONS = [
 		title_id          INTEGER REFERENCES titles(id),
 		display_name      TEXT NOT NULL,
 		url               TEXT,
-		service           TEXT,
 		host_id           TEXT,
 		host_tag          TEXT,
 		started_at        TEXT,
 		ended_at          TEXT,
 		end_reason        TEXT,
 		weekly_event_id   TEXT,
-		source            TEXT NOT NULL DEFAULT 'live',
-		sheet_row         INTEGER,
-		posted_text       TEXT
+		source            TEXT NOT NULL DEFAULT 'live'
 	);
 	CREATE INDEX watchparties_active ON watchparties (channel_id) WHERE ended_at IS NULL;
 
