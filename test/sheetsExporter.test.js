@@ -22,3 +22,33 @@ test('titleCell links to IMDb and escapes quotes', () => {
 		'=HYPERLINK("https://www.imdb.com/title/tt123/", "Say ""Hi""")',
 	);
 });
+
+test('user text that looks like a formula is written as plain text', () => {
+	const { asText } = require('../utils/sheetsExporter');
+	assert.equal(asText('=IMPORTXML("http://evil", "//a")'), '\'=IMPORTXML("http://evil", "//a")');
+	assert.equal(asText('+1'), '\'+1');
+	assert.equal(asText('-cmd'), '\'-cmd');
+	assert.equal(asText('@SUM(A1)'), '\'@SUM(A1)');
+	assert.equal(asText('Alien'), 'Alien');
+	assert.equal(asText(117), 117);
+	assert.equal(titleCell('=1+1', null), '\'=1+1', 'free-text titles are escaped too');
+});
+
+test('titleCell only builds a link from a real IMDb id', () => {
+	assert.equal(titleCell('Alien', 'tt0078748'), '=HYPERLINK("https://www.imdb.com/title/tt0078748/", "Alien")');
+	assert.equal(titleCell('Alien', '"), IMPORTDATA("x'), 'Alien');
+});
+
+test('watchpartyRow escapes every user-supplied cell, not just the title', () => {
+	const { watchpartyRow } = require('../utils/sheetsExporter');
+	const row = watchpartyRow({
+		title: '=cmd()', url: '=IMAGE("http://evil")', postedDate: new Date(), service: '+svc',
+		genre: '@g', runtime: 90, host: '-host', attendees: '=a', endAttendees: '=b', mediaType: 'movie',
+	}, null);
+	assert.equal(row.length, 11);
+	for (const cell of row) {
+		if (typeof cell === 'string') assert.ok(!/^[=+\-@]/.test(cell), `unescaped cell: ${cell}`);
+	}
+	assert.equal(row[6], 90, 'numbers stay numbers');
+	assert.match(watchpartyRow({ title: 'Alien', postedDate: new Date() }, 'tt0078748')[0], /^=HYPERLINK/);
+});

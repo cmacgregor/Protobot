@@ -4,7 +4,7 @@
   "main": "bot.js",
   "dependencies": {
     "@googleapis/sheets": "^13.0.1",
-    "discord.js": "^14.16.3",
+    "discord.js": "^14.28.1",
     "dotenv": "^16.3.1"
   },
   "scripts": {
@@ -22,5 +22,8 @@
   },
   "engines": {
     "node": ">=22.13"
+  },
+  "overrides": {
+    "gaxios": "^7.3.1"
   }
 }
