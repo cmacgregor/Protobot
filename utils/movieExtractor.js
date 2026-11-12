@@ -1,17 +1,18 @@
 // utils/movieExtractor.js
 const { normalizeUrl, detectService } = require('./services');
+const { fetchPublicText } = require('./safeFetch');
 
 const REQUEST_TIMEOUT_MS = 6000;
 
 // Extract title from Open Graph metadata
 async function fetchOpenGraphTitle(url) {
 	try {
-		const res = await fetch(url, {
-			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+		// Links come from anyone in the channel, so never fetch addresses on the bot's own network
+		const html = await fetchPublicText(url, {
+			timeoutMs: REQUEST_TIMEOUT_MS,
 			headers: { 'User-Agent': 'Mozilla/5.0' },
 		});
-		if (!res.ok) return null;
-		const html = await res.text();
+		if (!html) return null;
 		const match = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
 		if (match) return match[1];
 		// Fallback to title tag

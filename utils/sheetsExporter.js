@@ -55,11 +55,36 @@ function toRow(movie, titleValue = movie.title) {
 	];
 }
 
-/** Column A value: a link to IMDb when we know the id. Quotes are doubled so they can't break the formula. */
+// Sheets treats text starting with these as a formula when writing USER_ENTERED
+const FORMULA_START = /^[=+\-@\t\r]/;
+const IMDB_ID = /^tt\d+$/;
+
+/**
+ * Make user-supplied text safe to write with USER_ENTERED: a leading apostrophe
+ * tells Sheets to store it as plain text instead of running it as a formula.
+ * Non-strings (numbers) pass through.
+ */
+function asText(value) {
+	return typeof value === 'string' && FORMULA_START.test(value) ? `'${value}` : value;
+}
+
+/**
+ * Column A value: a link to IMDb when we have a valid id, otherwise plain text.
+ * Quotes are doubled so a title can't break out of the formula's string.
+ */
 function titleCell(title, imdbId) {
-	return imdbId
+	return imdbId && IMDB_ID.test(imdbId)
 		? `=HYPERLINK("https://www.imdb.com/title/${imdbId}/", "${title.replace(/"/g, '""')}")`
-		: title;
+		: asText(title);
+}
+
+/**
+ * The row written for a finished watchparty: an IMDb link in column A and every other
+ * cell escaped, since the row is written USER_ENTERED.
+ */
+function watchpartyRow(movie, imdbId) {
+	const [, ...rest] = toRow(movie);
+	return [titleCell(movie.title, imdbId), ...rest.map(asText)];
 }
 
 async function appendRows(rows, valueInputOption) {
@@ -89,9 +114,9 @@ async function exportMovieToSheet(movie) {
 		imdbId = imdbId || info.imdbId;
 	}
 
-	const row = toRow({ ...movie, genre, runtime }, titleCell(movie.title, imdbId));
-	// USER_ENTERED so the HYPERLINK formula is evaluated
-	await appendRows([row], 'USER_ENTERED');
+	// USER_ENTERED so the HYPERLINK formula is evaluated; every other cell is escaped
+	// so text people typed (titles, links) can't run as a formula
+	await appendRows([watchpartyRow({ ...movie, genre, runtime }, imdbId)], 'USER_ENTERED');
 }
 
 /**
@@ -122,4 +147,6 @@ module.exports = {
 	// Exported for tests
 	toRow,
 	titleCell,
+	asText,
+	watchpartyRow,
 };

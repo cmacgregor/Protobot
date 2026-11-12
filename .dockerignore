@@ -7,5 +7,7 @@ docker-compose*
 README.md
 LICENSE
 .vscode
-.env.github
+# Secrets are mounted at runtime, never baked into the image
+.env
+.env*
 data
