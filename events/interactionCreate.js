@@ -12,6 +12,20 @@ async function replyEphemeral(interaction, content) {
 module.exports = {
 	name: Events.InteractionCreate,
 	async execute(interaction) {
+		if (interaction.isAutocomplete()) {
+			const command = interaction.client.commands.get(interaction.commandName);
+			try {
+				await command?.autocomplete?.(interaction);
+			}
+			catch (error) {
+				console.error(`[ERROR] Autocomplete for /${interaction.commandName} failed:`, error.message);
+				// Respond with nothing so Discord doesn't show an error in the picker
+				if (!interaction.responded) {
+					await interaction.respond([]).catch(err => console.error('[ERROR] Empty autocomplete reply failed:', err.message));
+				}
+			}
+			return;
+		}
 		if (!interaction.isChatInputCommand()) return;
 
 		const command = interaction.client.commands.get(interaction.commandName);
