@@ -21,6 +21,7 @@ Watchparty records live in a SQLite database (`data/protobot.db`). If Google She
 - **Ending:** movies end at their TMDB runtime plus 15 minutes. Any party ends once its voice channel has been empty for 10 minutes (recorded as the time everyone left), with `/endwatchparty`, when a new party starts in the same channel, or after 8 hours. The bot posts a summary of who watched.
 - **Restarts:** active parties are picked back up when the bot comes online. A party whose runtime ran out while the bot was offline is closed at the time it should have ended.
 - **Weekly movie night:** a party started while a Discord scheduled event is live in that voice channel is tagged with the event.
+- **Scheduled events start and end automatically.** The bot starts each scheduled event at its start time, and ends a voice-channel event once the channel has been empty for 30 minutes (including when nobody turns up). External events end at their scheduled end time. Recurring events move on to their next date by themselves. This needs the bot's role to have **Manage Events**; without it the bot logs a warning once and leaves events alone.
 
 ## Setup
 1. Register your application/bot with Discord
