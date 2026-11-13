@@ -7,6 +7,9 @@ As well as my own learning.
 |---|---|---|
 | `/watchparty name url` | Anyone | Starts a watchparty: posts the link with a TMDB poster and records who watches (see below). Pick the title from the suggestions to link it to TMDB |
 | `/endwatchparty` | Host, or anyone in the party's voice channel | Ends the watchparty in this channel now |
+| `/history [page]` | Anyone | What we've watched, newest first, with rewatches and movie nights marked |
+| `/stats [member]` | Anyone | Server stats (parties, hours, genres, rewatches, top hosts and viewers), or one member's: watched count, attendance rate, how often they arrive late or leave early, favorite genres |
+| `/watched title` | Anyone | Have we watched this? Every viewing with date and who watched. Suggests titles from our history |
 | `/importsheet` | Server owner | Imports the existing Google Sheets log into the database, matching old usernames to current members. Safe to re-run |
 | `/exportmovies [rescan]` | Server owner | Scans the channel for movie links posted since the last export and appends them to Google Sheets |
 | `/raffle` | Anyone | Picks a random member of your current voice channel |
@@ -54,7 +57,6 @@ Pull requests run lint and tests in CI, and the Docker image is only published w
 - Mount `./data` (as in the example). It holds the watchparty database, so without it records are lost when the container is recreated
 
 ## Roadmap
-- `/history` and `/stats`: what we've watched, genres, attendance, rewatches
 - Ratings (1–10) prompted when a watchparty ends
 - `/recommend` based on the group's ratings, skipping what's been watched
 - Raffle setup command to configure which voice channel is raffled on
